@@ -1,0 +1,442 @@
+.errorBanner {
+  background: rgba(248, 81, 73, 0.1);
+  border: 1px solid var(--red);
+  color: var(--red);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+}
+
+.pageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.pageHeaderLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.pageHeader h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.lastSynced {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.btnPrimary {
+  background: var(--accent);
+  color: #0d1117;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: opacity 0.15s;
+}
+
+.btnPrimary:hover { opacity: 0.85; }
+.btnPrimary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btnSecondary {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.btnSecondary:hover {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+.btnSecondary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.syncMsg {
+  font-size: 0.85rem;
+  color: var(--green);
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab, .tabActive {
+  background: none;
+  border: none;
+  padding: 0.6rem 1rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: color 0.15s;
+}
+
+.tabActive {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.tab:hover {
+  color: var(--text-primary);
+}
+
+.count, .countAlert {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.1);
+  color: var(--text-secondary);
+}
+
+.countAlert {
+  background: rgba(188, 140, 255, 0.2);
+  color: #bc8cff;
+}
+
+.tableWrap {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.table th {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.6rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  color: var(--text-primary);
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table tr:hover td {
+  background: rgba(255,255,255,0.02);
+}
+
+.trackedRow td:first-child {
+  color: #bc8cff;
+  font-weight: 500;
+}
+
+.urgentDate { color: var(--red); font-weight: 600; }
+.warnDate { color: var(--amber); font-weight: 600; }
+.normalDate { color: var(--text-primary); }
+.daysBadge { color: var(--text-secondary); font-size: 0.8em; font-weight: 400; }
+.dash { color: var(--text-secondary); }
+
+.variants {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
+.artistNames {
+  color: #bc8cff;
+  font-size: 0.82rem;
+}
+
+.coverList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.coverItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.coverThumb {
+  width: 36px;
+  height: 54px;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+
+.coverLabel {
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  display: block;
+}
+
+.coverArtist {
+  font-size: 0.75rem;
+  color: #bc8cff;
+  display: block;
+}
+
+.loading, .empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.syncInfo {
+  margin-top: 1rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.issueLink, .coverLink {
+  color: inherit;
+  text-decoration: none;
+}
+
+.issueLink:hover, .coverLink:hover {
+  text-decoration: underline;
+  color: var(--accent);
+}
+
+.coverItemLink {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.coverItemLink:hover .coverLabel {
+  color: var(--accent);
+}
+
+/* FOC Calendar cover strip */
+.coverStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.coverStripLink {
+  text-decoration: none;
+  color: inherit;
+}
+
+.coverStripLink:hover .coverStripLabel {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.coverStripItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  width: 110px;
+}
+
+.coverStripThumb {
+  width: 110px;
+  height: 165px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  display: block;
+}
+
+.coverStripPlaceholder {
+  width: 110px;
+  height: 165px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.coverStripLabel {
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.3;
+  max-width: 110px;
+  word-break: break-word;
+}
+
+/* ── Monthly view ── */
+
+.monthlyDesktop {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.monthlyMobile {
+  display: none;
+}
+
+.monthSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.monthHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--accent);
+}
+
+.monthLabel {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.monthCount {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* Card list inside monthly mobile sections — always visible when rendered */
+.monthCardList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+@media (max-width: 768px) {
+  .monthlyDesktop {
+    display: none;
+  }
+
+  .monthlyMobile {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+  }
+}
+
+/* ── Mobile card layout ── */
+
+/* artistCardList hidden on desktop, visible on mobile */
+.artistCardList {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Hide tables on mobile */
+  /* Hide artist table, show artist cards */
+  .artistTableWrap {
+    display: none;
+  }
+
+  .artistCardList {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .focCard,
+  .artistCard {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .focCardTracked {
+    border-left: 3px solid #bc8cff;
+  }
+
+  .focCardHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .focCardSeries {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+  }
+
+  .focCardSeriesTracked {
+    color: #bc8cff;
+  }
+
+  .focCardMeta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    flex-wrap: wrap;
+  }
+
+  /* Tighter page header on mobile */
+  .pageHeader {
+    margin-bottom: 1rem;
+  }
+
+  .actions {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  /* Cover strip scrolls horizontally on mobile if many variants */
+  .coverStrip {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+  }
+
+  .coverStripItem {
+    flex-shrink: 0;
+  }
+}

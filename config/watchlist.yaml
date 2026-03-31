@@ -1,0 +1,76 @@
+# Comic book watchlist — edit this file to track series and artists.
+# The backend reads this on startup and before each weekly sync.
+# Add a series or artist entry and it will be picked up on the next sync.
+
+series:
+  # DC Absolute Universe
+  - name: "Absolute Batman"
+    url: "https://leagueofcomicgeeks.com/comics/series/178012/absolute-batman"
+    priority: regular
+  - name: "Absolute Superman"
+    url: "https://leagueofcomicgeeks.com/comics/series/178013/absolute-superman"
+    priority: regular
+  - name: "Absolute Wonder Woman"
+    url: "https://leagueofcomicgeeks.com/comics/series/178014/absolute-wonder-woman"
+    priority: regular
+  - name: "Absolute Flash"
+    url: "https://leagueofcomicgeeks.com/comics/series/178283/absolute-flash"
+    priority: regular
+  - name: "Absolute Green Lantern"
+    url: "https://leagueofcomicgeeks.com/comics/series/178310/absolute-green-lantern"
+    priority: regular
+  - name: "Absolute Martian Manhunter"
+    url: "https://leagueofcomicgeeks.com/comics/series/181014/absolute-martian-manhunter"
+    priority: regular
+  - name: "Absolute Catwoman"
+    url: "https://leagueofcomicgeeks.com/comics/series/198467/absolute-catwoman"
+    priority: coming_soon
+  - name: "Absolute Green Arrow"
+    url: "https://leagueofcomicgeeks.com/comics/series/193454/absolute-green-arrow"
+    priority: coming_soon
+
+  # DC Connected
+  - name: "D.C. K.O."
+    url: ""
+    priority: regular
+  - name: "DC Knightfight"
+    url: ""
+    priority: regular
+  - name: "DC All In"
+    url: ""
+    priority: regular
+
+  # Other regulars
+  - name: "White Sky"
+    url: "https://leagueofcomicgeeks.com/comics/series/201401/white-sky"
+    priority: regular
+  - name: "DORC"
+    url: "https://leagueofcomicgeeks.com/comics/series/201402/dorc"
+    priority: regular
+  - name: "Phantom of the Opera"
+    url: "https://leagueofcomicgeeks.com/comics/series/201089/universal-monsters-phantom-of-the-opera"
+    priority: regular
+
+  # Crossovers / occasional
+  - name: "Batman/Deadpool"
+    url: ""
+    priority: occasional
+  - name: "Deadpool/Batman"
+    url: ""
+    priority: occasional
+  - name: "Superman/Spider-Man"
+    url: ""
+    priority: occasional
+  - name: "Spider-Man/Superman"
+    url: ""
+    priority: occasional
+
+artists:
+  - name: "Dan Mora"
+    url: ""
+  - name: "Dan Quintana"
+    url: ""
+  - name: "John Giang"
+    url: ""
+  - name: "Greg Capullo"
+    url: ""

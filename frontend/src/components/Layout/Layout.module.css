@@ -1,0 +1,172 @@
+.root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.headerInner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.logo {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.nav {
+  display: flex;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.nav a {
+  padding: 0.4rem 0.8rem;
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  transition: color 0.15s, background 0.15s;
+}
+
+.nav a:hover {
+  color: var(--text-primary);
+  background: rgba(255,255,255,0.05);
+  text-decoration: none;
+}
+
+.active {
+  color: var(--text-primary) !important;
+  background: rgba(88, 166, 255, 0.15) !important;
+}
+
+/* Groups bell + hamburger, pushed to the right */
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.bell {
+  position: relative;
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  padding: 0.25rem;
+  line-height: 1;
+  border-radius: var(--radius);
+  transition: background 0.15s;
+}
+
+.bell:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+.badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  background: var(--red);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 0 4px;
+  min-width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Hidden on desktop, shown on mobile */
+.menuBtn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 1.4rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: var(--radius);
+  line-height: 1;
+  transition: background 0.15s;
+}
+
+.menuBtn:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+/* Mobile nav drawer (rendered only when menuOpen=true) */
+.navDrawer {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  padding: 0.5rem;
+  gap: 0.1rem;
+}
+
+.drawerLink,
+.drawerActive {
+  display: block;
+  padding: 0.8rem 1rem;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  border-radius: var(--radius);
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+
+.drawerActive {
+  color: var(--text-primary);
+  background: rgba(88, 166, 255, 0.15);
+}
+
+.drawerLink:hover {
+  color: var(--text-primary);
+  background: rgba(255,255,255,0.05);
+  text-decoration: none;
+}
+
+.main {
+  flex: 1;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+/* ── Mobile ── */
+@media (max-width: 640px) {
+  .headerInner {
+    padding: 0 1rem;
+    gap: 1rem;
+  }
+
+  .nav {
+    display: none;
+  }
+
+  .menuBtn {
+    display: block;
+  }
+
+  .main {
+    padding: 1rem;
+  }
+}

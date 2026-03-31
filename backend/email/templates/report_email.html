@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Comic Book Weekly Report — {{ report_date }}</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #f3f4f6;
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      color: #1a1a1a;
+    }
+    .wrapper {
+      max-width: 580px;
+      margin: 32px auto;
+      background: #ffffff;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #e5e7eb;
+    }
+    .header {
+      background: #0d0d0d;
+      color: #ffffff;
+      padding: 28px 32px;
+    }
+    .header h1 {
+      font-size: 20px;
+      font-weight: 800;
+      margin: 0 0 4px 0;
+      letter-spacing: -0.3px;
+    }
+    .header .date {
+      font-size: 13px;
+      color: #9ca3af;
+    }
+    .body {
+      padding: 28px 32px;
+    }
+    .body p {
+      font-size: 14px;
+      line-height: 1.6;
+      color: #374151;
+      margin: 0 0 16px 0;
+    }
+    .stats-grid {
+      display: flex;
+      gap: 16px;
+      margin: 20px 0;
+    }
+    .stat-box {
+      flex: 1;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 14px 16px;
+      text-align: center;
+      background: #f9fafb;
+    }
+    .stat-number {
+      font-size: 28px;
+      font-weight: 800;
+      color: #0d0d0d;
+      line-height: 1;
+    }
+    .stat-label {
+      font-size: 11px;
+      color: #6b7280;
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .attachment-note {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 6px;
+      padding: 14px 18px;
+      font-size: 13px;
+      color: #1e40af;
+      margin-top: 20px;
+    }
+    .attachment-note strong {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 13.5px;
+    }
+    .footer {
+      border-top: 1px solid #f0f0f0;
+      padding: 16px 32px;
+      font-size: 11px;
+      color: #9ca3af;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <h1>Comic Book Weekly Report</h1>
+      <div class="date">{{ report_date }}</div>
+    </div>
+
+    <div class="body">
+      <p>
+        Your weekly comic book tracking report is ready. Here is a summary
+        of what is coming up on Final Order Cutoff and any new artist alerts
+        for the period ending <strong>{{ report_date }}</strong>.
+      </p>
+
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-number">{{ foc_count }}</div>
+          <div class="stat-label">Upcoming FOC</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number">{{ artist_alert_count }}</div>
+          <div class="stat-label">Artist Alerts</div>
+        </div>
+      </div>
+
+      {% if pdf_attached %}
+      <div class="attachment-note">
+        <strong>Full report attached</strong>
+        The complete weekly report PDF is attached to this email.
+        Open it to see the full FOC table, reprints, and all notifications.
+      </div>
+      {% else %}
+      <p style="color:#6b7280; font-size:13px;">
+        (PDF report was not attached to this message.)
+      </p>
+      {% endif %}
+    </div>
+
+    <div class="footer">
+      Comic Book Covers Tracker &mdash; Auto-generated &mdash; {{ report_date }}
+    </div>
+  </div>
+</body>
+</html>

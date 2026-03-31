@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend-dev",
+      "runtimeExecutable": "/Users/jonathanvelasquez/.nvm/versions/node/v22.12.0/bin/npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "/Users/jonathanvelasquez/Code/comicbooks-new-covers-tracking/frontend",
+      "port": 5173,
+      "autoPort": false,
+      "env": {
+        "PATH": "/Users/jonathanvelasquez/.nvm/versions/node/v22.12.0/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+      }
+    }
+  ]
+}
