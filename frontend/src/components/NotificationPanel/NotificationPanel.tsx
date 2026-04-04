@@ -25,6 +25,13 @@ const TYPE_LABELS: Record<NotificationRead['type'], string> = {
 export default function NotificationPanel({ onClose }: { onClose: () => void }) {
   const { refresh } = useNotifications()
   const { data: notifications, loading, refetch } = useApi(() => api.getNotifications(false))
+  const { data: syncLogs } = useApi(() => api.getSyncLogs())
+  const lastSyncAt = syncLogs?.[0]?.started_at ?? null
+
+  function isNew(n: NotificationRead): boolean {
+    if (!lastSyncAt) return !n.is_read
+    return new Date(n.created_at) >= new Date(lastSyncAt)
+  }
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -61,8 +68,8 @@ export default function NotificationPanel({ onClose }: { onClose: () => void }) 
           {notifications?.map(n => (
             <div
               key={n.id}
-              className={`${styles.item} ${!n.is_read ? styles.unread : ''}`}
-              onClick={() => !n.is_read && handleMarkRead(n.id)}
+              className={`${styles.item} ${isNew(n) ? styles.unread : ''}`}
+              onClick={() => isNew(n) && !n.is_read && handleMarkRead(n.id)}
             >
               <span
                 className={styles.tag}
@@ -75,7 +82,7 @@ export default function NotificationPanel({ onClose }: { onClose: () => void }) 
                 {n.body && <p className={styles.itemText}>{n.body}</p>}
                 <p className={styles.itemTime}>{formatTimestamp(n.created_at)}</p>
               </div>
-              {!n.is_read && <span className={styles.dot} />}
+              {isNew(n) && <span className={styles.dot} />}
             </div>
           ))}
         </div>

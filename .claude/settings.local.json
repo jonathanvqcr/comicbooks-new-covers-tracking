@@ -142,7 +142,21 @@
       "Bash(backend/.venv/bin/alembic revision --autogenerate -m \"add_reprint_date_to_notifications\")",
       "Bash(backend/.venv/bin/python3 backend/scripts/export_static.py)",
       "Bash(npm run build)",
-      "Bash(node_modules/.bin/vite build)"
+      "Bash(node_modules/.bin/vite build)",
+      "Bash(npm install -g vercel)",
+      "Bash(vercel --version)",
+      "Bash(git commit:*)",
+      "Bash(gh auth status)",
+      "Bash(brew --version)",
+      "Bash(brew install gh)",
+      "Bash(gh repo create jonathanvqcr/comicbooks-new-covers-tracking --public --source=. --remote=origin --push)",
+      "Bash(vercel login)",
+      "Bash(vercel whoami)",
+      "Bash(vercel --prod --yes)",
+      "WebFetch(domain:comicbooks-new-covers-tracking.vercel.app)",
+      "Bash(git add vercel.json Makefile)",
+      "Bash(git push)",
+      "Bash(git add:*)"
     ]
   }
 }

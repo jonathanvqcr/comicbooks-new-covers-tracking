@@ -205,6 +205,9 @@ def export_reprints(db) -> None:
 
 
 def export_notifications(db) -> None:
+    last_sync = db.query(SyncLog).order_by(SyncLog.started_at.desc()).first()
+    last_sync_at = last_sync.started_at if last_sync else None
+
     notifs = (
         db.query(Notification)
         .filter(Notification.type != "SYNC_ERROR")
@@ -212,9 +215,20 @@ def export_notifications(db) -> None:
         .limit(100)
         .all()
     )
-    data = [NotificationRead.model_validate(n).model_dump(mode="json") for n in notifs]
-    _write("notifications.json", data)
-    print(f"    {len(data)} notifications")
+
+    rows = []
+    new_count = 0
+    for n in notifs:
+        row = NotificationRead.model_validate(n).model_dump(mode="json")
+        # Blue dot = created during the most recent sync only
+        is_new = last_sync_at is not None and n.created_at >= last_sync_at
+        row["is_read"] = not is_new
+        if is_new:
+            new_count += 1
+        rows.append(row)
+
+    _write("notifications.json", rows)
+    print(f"    {len(rows)} notifications ({new_count} new from last sync)")
 
 
 def export_sync_info(db) -> None:

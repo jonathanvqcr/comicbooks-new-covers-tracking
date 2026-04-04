@@ -27,10 +27,19 @@ export default function Notifications() {
   const { isAdmin } = useAdmin()
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
   const { refresh } = useNotifications()
+  const { data: syncLogs } = useApi(() => api.getSyncLogs())
+  const lastSyncAt = syncLogs?.[0]?.started_at ?? null
+
   const { data: notifications, loading, refetch } = useApi(
     () => api.getNotifications(filter === 'unread'),
     [filter]
   )
+
+  // "New" = created after the last sync, regardless of DB is_read state
+  function isNew(n: NotificationRead): boolean {
+    if (!lastSyncAt) return !n.is_read
+    return new Date(n.created_at) >= new Date(lastSyncAt)
+  }
 
   async function handleMarkAllRead() {
     await api.markAllRead()
@@ -44,7 +53,7 @@ export default function Notifications() {
     refresh()
   }
 
-  const unread = notifications?.filter(n => !n.is_read).length ?? 0
+  const unread = notifications?.filter(n => isNew(n)).length ?? 0
 
   return (
     <div>
@@ -79,7 +88,7 @@ export default function Notifications() {
         {notifications?.map(n => (
           <div
             key={n.id}
-            className={`${styles.item} ${!n.is_read ? styles.unread : ''}`}
+            className={`${styles.item} ${isNew(n) ? styles.unread : ''}`}
           >
             <span
               className={styles.tag}
@@ -93,10 +102,10 @@ export default function Notifications() {
               <p className={styles.itemTime}>{formatTimestamp(n.created_at)}</p>
             </div>
             <div className={styles.itemActions}>
-              {!n.is_read && (
+              {isNew(n) && (
                 <>
                   <span className={styles.dot} />
-                  {isAdmin && (
+                  {isAdmin && !n.is_read && (
                     <button
                       className={styles.readBtn}
                       onClick={() => handleMarkRead(n.id)}
