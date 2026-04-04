@@ -14,7 +14,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<Layout />}>
         <Route index element={<Dashboard />} />
-        {isAdmin && <Route path="notifications" element={<Notifications />} />}
+        <Route path="notifications" element={<Notifications />} />
         {isAdmin && <Route path="reports" element={<Reports />} />}
         {isAdmin && <Route path="settings" element={<Settings />} />}
       </Route>

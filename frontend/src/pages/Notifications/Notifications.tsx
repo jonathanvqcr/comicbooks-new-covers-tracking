@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { api } from '../../api/client'
 import { useApi } from '../../hooks/useApi'
 import { useNotifications } from '../../context/NotificationContext'
+import { useAdmin } from '../../context/AdminContext'
 import type { NotificationRead } from '../../types'
 import styles from './Notifications.module.css'
 
@@ -22,6 +23,7 @@ const TYPE_LABELS: Record<NotificationRead['type'], string> = {
 }
 
 export default function Notifications() {
+  const { isAdmin } = useAdmin()
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
   const { refresh } = useNotifications()
   const { data: notifications, loading, refetch } = useApi(
@@ -48,7 +50,7 @@ export default function Notifications() {
       <div className={styles.pageHeader}>
         <h1>Notifications</h1>
         <div className={styles.actions}>
-          {unread > 0 && (
+          {isAdmin && unread > 0 && (
             <button className={styles.btnSecondary} onClick={handleMarkAllRead}>
               Mark all read ({unread})
             </button>
@@ -93,12 +95,14 @@ export default function Notifications() {
               {!n.is_read && (
                 <>
                   <span className={styles.dot} />
-                  <button
-                    className={styles.readBtn}
-                    onClick={() => handleMarkRead(n.id)}
-                  >
-                    Mark read
-                  </button>
+                  {isAdmin && (
+                    <button
+                      className={styles.readBtn}
+                      onClick={() => handleMarkRead(n.id)}
+                    >
+                      Mark read
+                    </button>
+                  )}
                 </>
               )}
             </div>

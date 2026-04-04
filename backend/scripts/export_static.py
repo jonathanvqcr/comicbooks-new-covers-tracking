@@ -3,10 +3,11 @@ Export dashboard data to static JSON files for Vercel deployment.
 
 Usage: backend/.venv/bin/python3 backend/scripts/export_static.py
 
-Writes 4 files to frontend/public/data/:
+Writes 5 files to frontend/public/data/:
   foc-export.json      — FocExportRow[]
   reprints.json        — FocExportRow[]
   upcoming-issues.json — IssueRead[]
+  notifications.json   — NotificationRead[] (recent, no SYNC_ERRORs)
   sync-info.json       — SyncLogRead (the most recent sync log entry)
 """
 import json
@@ -21,7 +22,7 @@ from sqlalchemy import or_
 from backend.database import SessionLocal
 from backend.models import Issue, Series, IssueCover, Notification, SyncLog, CoverArtist
 from backend.schemas import (
-    IssueRead, IssueCoverRead, FocExportRow, CoverVariantItem, SyncLogRead
+    IssueRead, IssueCoverRead, FocExportRow, CoverVariantItem, SyncLogRead, NotificationRead
 )
 
 OUT_DIR = os.path.join(
@@ -203,6 +204,19 @@ def export_reprints(db) -> None:
     print(f"    {len(data)} reprint rows")
 
 
+def export_notifications(db) -> None:
+    notifs = (
+        db.query(Notification)
+        .filter(Notification.type != "SYNC_ERROR")
+        .order_by(Notification.created_at.desc())
+        .limit(100)
+        .all()
+    )
+    data = [NotificationRead.model_validate(n).model_dump(mode="json") for n in notifs]
+    _write("notifications.json", data)
+    print(f"    {len(data)} notifications")
+
+
 def export_sync_info(db) -> None:
     log = (
         db.query(SyncLog)
@@ -234,6 +248,7 @@ def main() -> None:
         export_upcoming_issues(db)
         export_foc(db)
         export_reprints(db)
+        export_notifications(db)
         export_sync_info(db)
     finally:
         db.close()

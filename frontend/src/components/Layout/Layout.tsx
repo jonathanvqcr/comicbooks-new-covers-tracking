@@ -18,23 +18,21 @@ export default function Layout() {
           <span className={styles.logo}>🗓 Comic Tracker</span>
           <nav className={styles.nav}>
             <NavLink to="/" end className={({ isActive }) => isActive ? styles.active : ''}>Dashboard</NavLink>
-            {isAdmin && <NavLink to="/notifications" className={({ isActive }) => isActive ? styles.active : ''}>Notifications</NavLink>}
+            <NavLink to="/notifications" className={({ isActive }) => isActive ? styles.active : ''}>Notifications</NavLink>
             {isAdmin && <NavLink to="/reports" className={({ isActive }) => isActive ? styles.active : ''}>Reports</NavLink>}
             {isAdmin && <NavLink to="/settings" className={({ isActive }) => isActive ? styles.active : ''}>Settings</NavLink>}
           </nav>
           <div className={styles.headerRight}>
-            {isAdmin && (
-              <button
-                className={styles.bell}
-                onClick={() => setPanelOpen(o => !o)}
-                aria-label="Notifications"
-              >
-                🔔
-                {unreadCount > 0 && (
-                  <span className={styles.badge}>{unreadCount > 99 ? '99+' : unreadCount}</span>
-                )}
-              </button>
-            )}
+            <button
+              className={styles.bell}
+              onClick={() => setPanelOpen(o => !o)}
+              aria-label="Notifications"
+            >
+              🔔
+              {unreadCount > 0 && (
+                <span className={styles.badge}>{unreadCount > 99 ? '99+' : unreadCount}</span>
+              )}
+            </button>
             <button
               className={styles.menuBtn}
               onClick={() => setMenuOpen(o => !o)}
@@ -48,7 +46,7 @@ export default function Layout() {
         {menuOpen && (
           <nav className={styles.navDrawer}>
             <NavLink to="/" end className={({ isActive }) => isActive ? styles.drawerActive : styles.drawerLink} onClick={() => setMenuOpen(false)}>Dashboard</NavLink>
-            {isAdmin && <NavLink to="/notifications" className={({ isActive }) => isActive ? styles.drawerActive : styles.drawerLink} onClick={() => setMenuOpen(false)}>Notifications</NavLink>}
+            <NavLink to="/notifications" className={({ isActive }) => isActive ? styles.drawerActive : styles.drawerLink} onClick={() => setMenuOpen(false)}>Notifications</NavLink>
             {isAdmin && <NavLink to="/reports" className={({ isActive }) => isActive ? styles.drawerActive : styles.drawerLink} onClick={() => setMenuOpen(false)}>Reports</NavLink>}
             {isAdmin && <NavLink to="/settings" className={({ isActive }) => isActive ? styles.drawerActive : styles.drawerLink} onClick={() => setMenuOpen(false)}>Settings</NavLink>}
           </nav>
@@ -59,7 +57,7 @@ export default function Layout() {
         <Outlet />
       </main>
 
-      {isAdmin && panelOpen && <NotificationPanel onClose={() => setPanelOpen(false)} />}
+      {panelOpen && <NotificationPanel onClose={() => setPanelOpen(false)} />}
     </div>
   )
 }

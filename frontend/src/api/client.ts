@@ -61,8 +61,13 @@ export const api = {
 
   // Notifications
   getNotifications: (unreadOnly = false) =>
-    get<NotificationRead[]>(`/notifications${unreadOnly ? '?unread_only=true' : ''}`),
-  getUnreadCount: () => get<UnreadCountRead>('/notifications/unread-count'),
+    isStatic()
+      ? getStatic<NotificationRead[]>('notifications.json')
+      : get<NotificationRead[]>(`/notifications${unreadOnly ? '?unread_only=true' : ''}`),
+  getUnreadCount: (): Promise<UnreadCountRead> =>
+    isStatic()
+      ? Promise.resolve({ count: 0 })
+      : get<UnreadCountRead>('/notifications/unread-count'),
   markRead: (id: number) => post<NotificationRead>(`/notifications/${id}/read`),
   markAllRead: () => post<{ message: string }>('/notifications/read-all'),
 
