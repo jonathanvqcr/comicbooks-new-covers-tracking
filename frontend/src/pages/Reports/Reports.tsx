@@ -1,17 +1,8 @@
 import React, { useState } from 'react'
 import { api } from '../../api/client'
 import { useApi } from '../../hooks/useApi'
+import { formatTimestamp } from '../../utils/dates'
 import styles from './Reports.module.css'
-
-function formatDate(d: string): string {
-  return new Date(d).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
 
 function formatPeriod(start: string | null, end: string | null): string {
   if (!start || !end) return ''
@@ -82,7 +73,7 @@ export default function Reports() {
               <div className={styles.cardBody}>
                 <p className={styles.cardTitle}>{r.filename}</p>
                 <p className={styles.cardMeta}>
-                  Generated: {formatDate(r.generated_at)}
+                  Generated: {formatTimestamp(r.generated_at)}
                 </p>
                 {(r.period_start || r.period_end) && (
                   <p className={styles.cardMeta}>

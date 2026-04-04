@@ -2,6 +2,7 @@ import React, { useEffect } from 'react'
 import { api } from '../../api/client'
 import { useApi } from '../../hooks/useApi'
 import { useNotifications } from '../../context/NotificationContext'
+import { formatTimestamp } from '../../utils/dates'
 import type { NotificationRead } from '../../types'
 import styles from './NotificationPanel.module.css'
 
@@ -72,7 +73,7 @@ export default function NotificationPanel({ onClose }: { onClose: () => void }) 
               <div className={styles.itemBody}>
                 <p className={styles.itemTitle}>{n.title}</p>
                 {n.body && <p className={styles.itemText}>{n.body}</p>}
-                <p className={styles.itemTime}>{new Date(n.created_at).toLocaleString()}</p>
+                <p className={styles.itemTime}>{formatTimestamp(n.created_at)}</p>
               </div>
               {!n.is_read && <span className={styles.dot} />}
             </div>

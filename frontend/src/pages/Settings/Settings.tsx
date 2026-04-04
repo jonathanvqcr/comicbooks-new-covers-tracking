@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { api } from '../../api/client'
 import { useApi } from '../../hooks/useApi'
+import { formatTimestamp } from '../../utils/dates'
 import type { NotificationSettingsUpdate, SyncLogRead } from '../../types'
 import styles from './Settings.module.css'
 
@@ -224,7 +225,7 @@ export default function Settings() {
                     : '—'
                   return (
                     <tr key={log.id}>
-                      <td>{new Date(log.started_at).toLocaleString()}</td>
+                      <td>{formatTimestamp(log.started_at)}</td>
                       <td>
                         <code className={styles.code}>{log.job_name}</code>
                       </td>

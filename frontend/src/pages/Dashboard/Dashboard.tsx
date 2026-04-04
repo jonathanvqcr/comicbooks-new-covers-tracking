@@ -2,14 +2,9 @@ import React, { useState, useRef } from 'react'
 import { api } from '../../api/client'
 import { useApi } from '../../hooks/useApi'
 import { useAdmin } from '../../context/AdminContext'
+import { formatDate, formatTimestamp } from '../../utils/dates'
 import type { FocExportRow, IssueRead } from '../../types'
 import styles from './Dashboard.module.css'
-
-function formatDate(d: string | null): string {
-  if (!d) return '—'
-  const date = new Date(d + 'T00:00:00')
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
 
 function daysUntil(d: string | null): number | null {
   if (!d) return null
@@ -239,7 +234,7 @@ export default function Dashboard() {
           <h1>Dashboard</h1>
           {lastSync && (
             <span className={styles.lastSynced}>
-              Last synced: {new Date(lastSync.started_at).toLocaleString()} — {lastSync.status}
+              Last synced: {formatTimestamp(lastSync.started_at)} — {lastSync.status}
             </span>
           )}
         </div>
