@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, and_
 from datetime import date, timedelta
 from typing import List
 
@@ -56,23 +56,75 @@ def _build_issue_read(issue: Issue, db: Session) -> IssueRead:
 @router.get("/issues/upcoming", response_model=List[IssueRead])
 def get_upcoming_issues(db: Session = Depends(get_db)):
     cutoff = date.today() + timedelta(weeks=12)
-    issues = (
+    today = date.today()
+
+    # Issues from followed (watchlist) series
+    followed = (
         db.query(Issue)
         .join(Issue.series)
         .filter(
-            Series.is_followed == True,
-            or_(
-                Issue.foc_date <= cutoff,
-                Issue.release_date <= cutoff,
-            ),
-            or_(
-                Issue.foc_date >= date.today(),
-                Issue.release_date >= date.today(),
-            ),
+            Series.is_followed == True,  # noqa: E712
+            or_(Issue.foc_date <= cutoff, Issue.release_date <= cutoff),
+            or_(Issue.foc_date >= today, Issue.release_date >= today),
         )
-        .order_by(Issue.foc_date.asc().nullslast())
         .all()
     )
+
+    # Issues from artist-tracked series (not in watchlist) that have a tracked artist cover
+    artist_tracked = (
+        db.query(Issue)
+        .join(Issue.series)
+        .join(IssueCover, IssueCover.issue_id == Issue.id)
+        .join(CoverArtist, CoverArtist.issue_cover_id == IssueCover.id)
+        .join(Artist, Artist.id == CoverArtist.artist_id)
+        .filter(
+            Series.is_followed == False,  # noqa: E712
+            Artist.is_tracked == True,  # noqa: E712
+            or_(Issue.foc_date <= cutoff, Issue.release_date <= cutoff),
+            or_(Issue.foc_date >= today, Issue.release_date >= today),
+        )
+        .distinct()
+        .all()
+    )
+
+    # Merge, deduplicate, sort by FOC date
+    seen: set[int] = set()
+    merged: list[Issue] = []
+    for issue in followed + artist_tracked:
+        if issue.id not in seen:
+            seen.add(issue.id)
+            merged.append(issue)
+    merged.sort(key=lambda i: (i.foc_date or date.max))
+
+    return [_build_issue_read(issue, db) for issue in merged]
+
+
+@router.get("/issues/artist-alerts", response_model=List[IssueRead])
+def get_artist_alerts(db: Session = Depends(get_db)):
+    """
+    All issues with tracked artist covers — includes a 6-week lookback so
+    retailer exclusives that ship weeks after the main issue release date
+    are still visible.
+    """
+    cutoff = date.today() + timedelta(weeks=12)
+    lookback = date.today() - timedelta(weeks=6)
+
+    issues = (
+        db.query(Issue)
+        .join(IssueCover, IssueCover.issue_id == Issue.id)
+        .join(CoverArtist, CoverArtist.issue_cover_id == IssueCover.id)
+        .join(Artist, Artist.id == CoverArtist.artist_id)
+        .filter(
+            Artist.is_tracked == True,  # noqa: E712
+            or_(
+                and_(Issue.foc_date >= lookback, Issue.foc_date <= cutoff),
+                and_(Issue.release_date >= lookback, Issue.release_date <= cutoff),
+            ),
+        )
+        .distinct()
+        .all()
+    )
+    issues.sort(key=lambda i: (i.foc_date or i.release_date or date.max))
     return [_build_issue_read(issue, db) for issue in issues]
 
 

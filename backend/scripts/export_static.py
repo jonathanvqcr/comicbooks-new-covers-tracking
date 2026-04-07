@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from sqlalchemy import or_
 from backend.database import SessionLocal
-from backend.models import Issue, Series, IssueCover, Notification, SyncLog, CoverArtist
+from backend.models import Issue, Series, IssueCover, Notification, SyncLog, CoverArtist, Artist
 from backend.schemas import (
     IssueRead, IssueCoverRead, FocExportRow, CoverVariantItem, SyncLogRead, NotificationRead
 )
@@ -79,20 +79,76 @@ def _build_issue_read(issue: Issue) -> IssueRead:
     )
 
 
+def export_artist_alerts(db) -> None:
+    """Issues with tracked artist covers — includes 6-week lookback for retailer exclusives."""
+    from sqlalchemy import and_
+    cutoff = date.today() + timedelta(weeks=12)
+    lookback = date.today() - timedelta(weeks=6)
+
+    issues = (
+        db.query(Issue)
+        .join(IssueCover, IssueCover.issue_id == Issue.id)
+        .join(CoverArtist, CoverArtist.issue_cover_id == IssueCover.id)
+        .join(Artist, Artist.id == CoverArtist.artist_id)
+        .filter(
+            Artist.is_tracked == True,
+            or_(
+                and_(Issue.foc_date >= lookback, Issue.foc_date <= cutoff),
+                and_(Issue.release_date >= lookback, Issue.release_date <= cutoff),
+            ),
+        )
+        .distinct()
+        .all()
+    )
+    issues.sort(key=lambda i: (i.foc_date or i.release_date or date.max))
+    data = [_build_issue_read(i).model_dump(mode="json") for i in issues]
+    _write("artist-alerts.json", data)
+    print(f"    {len(data)} artist alert issues")
+
+
 def export_upcoming_issues(db) -> None:
     cutoff = date.today() + timedelta(weeks=12)
-    issues = (
+    today = date.today()
+
+    # Issues from followed (watchlist) series
+    followed = (
         db.query(Issue)
         .join(Issue.series)
         .filter(
             Series.is_followed == True,
             or_(Issue.foc_date <= cutoff, Issue.release_date <= cutoff),
-            or_(Issue.foc_date >= date.today(), Issue.release_date >= date.today()),
+            or_(Issue.foc_date >= today, Issue.release_date >= today),
         )
-        .order_by(Issue.foc_date.asc().nullslast())
         .all()
     )
-    data = [_build_issue_read(i).model_dump(mode="json") for i in issues]
+
+    # Issues from artist-tracked series (not in watchlist) that have a tracked artist cover
+    artist_tracked = (
+        db.query(Issue)
+        .join(Issue.series)
+        .join(IssueCover, IssueCover.issue_id == Issue.id)
+        .join(CoverArtist, CoverArtist.issue_cover_id == IssueCover.id)
+        .join(Artist, Artist.id == CoverArtist.artist_id)
+        .filter(
+            Series.is_followed == False,
+            Artist.is_tracked == True,
+            or_(Issue.foc_date <= cutoff, Issue.release_date <= cutoff),
+            or_(Issue.foc_date >= today, Issue.release_date >= today),
+        )
+        .distinct()
+        .all()
+    )
+
+    # Merge, deduplicate, sort by FOC date
+    seen: set = set()
+    merged = []
+    for issue in followed + artist_tracked:
+        if issue.id not in seen:
+            seen.add(issue.id)
+            merged.append(issue)
+    merged.sort(key=lambda i: (i.foc_date or date.max))
+
+    data = [_build_issue_read(i).model_dump(mode="json") for i in merged]
     _write("upcoming-issues.json", data)
     print(f"    {len(data)} upcoming issues")
 
@@ -259,6 +315,7 @@ def main() -> None:
     print("Exporting static data…")
     db = SessionLocal()
     try:
+        export_artist_alerts(db)
         export_upcoming_issues(db)
         export_foc(db)
         export_reprints(db)

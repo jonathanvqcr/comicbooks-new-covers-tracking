@@ -54,6 +54,8 @@ export const api = {
   // Issues
   getUpcomingIssues: () =>
     isStatic() ? getStatic<IssueRead[]>('upcoming-issues.json') : get<IssueRead[]>('/issues/upcoming'),
+  getArtistAlerts: () =>
+    isStatic() ? getStatic<IssueRead[]>('artist-alerts.json') : get<IssueRead[]>('/issues/artist-alerts'),
   getFocExport: () =>
     isStatic() ? getStatic<FocExportRow[]>('foc-export.json') : get<FocExportRow[]>('/issues/foc-export'),
   getReprints: () =>
@@ -78,6 +80,9 @@ export const api = {
 
   // Admin
   syncNow: () => post<SyncNowResponse>('/admin/sync-now'),
+  syncSeries: () => post<SyncNowResponse>('/admin/sync-now/series'),
+  syncReprints: () => post<SyncNowResponse>('/admin/sync-now/reprints'),
+  syncArtists: () => post<SyncNowResponse>('/admin/sync-now/artists'),
   getSyncLogs: (): Promise<SyncLogRead[]> =>
     isStatic()
       ? getStatic<SyncLogRead>('sync-info.json').then(d => [d])

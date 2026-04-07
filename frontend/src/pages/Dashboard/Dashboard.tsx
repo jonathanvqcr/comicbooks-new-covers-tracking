@@ -137,27 +137,45 @@ export default function Dashboard() {
   const [syncMsg, setSyncMsg] = useState('')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const { data: issues, loading: issuesLoading, refetch: refetchIssues } = useApi(() => api.getUpcomingIssues(), [isAdmin])
   const { data: exportRows, loading: exportLoading, refetch: refetchExport } = useApi(() => api.getFocExport(), [isAdmin])
   const { data: reprintRows, loading: reprintsLoading, refetch: refetchReprints } = useApi(() => api.getReprints(), [isAdmin])
+  const { data: artistAlerts, loading: artistLoading, refetch: refetchArtists } = useApi(() => api.getArtistAlerts(), [isAdmin])
   const { data: syncLogs, refetch: refetchLogs } = useApi(() => api.getSyncLogs(), [isAdmin])
 
   const lastSync = syncLogs?.[0]
   const hasError = lastSync?.status === 'error'
-  const artistIssues = issues?.filter(i => i.has_tracked_artist) ?? []
+  const artistIssues = artistAlerts ?? []
+
+  // Group issues by artist name → { artistName: issues[] }
+  const artistGroups: Map<string, IssueRead[]> = React.useMemo(() => {
+    const map = new Map<string, IssueRead[]>()
+    for (const issue of artistIssues) {
+      const names = new Set(issue.covers.flatMap(c => c.artist_names))
+      for (const name of names) {
+        if (!map.has(name)) map.set(name, [])
+        map.get(name)!.push(issue)
+      }
+    }
+    return map
+  }, [artistIssues])
   const monthGroups = exportRows ? groupByFocMonth(exportRows) : []
   const reprintMonthGroups = reprintRows ? groupByReprintMonth(reprintRows) : []
 
   React.useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current) }, [])
 
-  async function handleSync() {
+  async function handleSync(type: 'all' | 'series' | 'reprints' | 'artists' = 'all') {
     setSyncing(true)
     setSyncMsg('Starting sync…')
+
+    const apiFn = type === 'series' ? api.syncSeries
+      : type === 'reprints' ? api.syncReprints
+      : type === 'artists' ? api.syncArtists
+      : api.syncNow
 
     let triggerTime: number
     try {
       triggerTime = Date.now()
-      await api.syncNow()
+      await apiFn()
     } catch {
       setSyncMsg('Sync failed — check settings')
       setSyncing(false)
@@ -177,7 +195,7 @@ export default function Dashboard() {
         ) {
           clearInterval(pollRef.current!)
           pollRef.current = null
-          refetchIssues()
+          refetchArtists()
           refetchExport()
           refetchReprints()
           refetchLogs()
@@ -241,9 +259,20 @@ export default function Dashboard() {
         <div className={styles.actions}>
           {syncMsg && <span className={styles.syncMsg}>{syncMsg}</span>}
           {isAdmin && (
-            <button className={styles.btnSecondary} onClick={handleSync} disabled={syncing}>
-              {syncing ? 'Syncing…' : '🔄 Sync Now'}
-            </button>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <button className={styles.btnPrimary} onClick={() => handleSync('all')} disabled={syncing}>
+                {syncing ? 'Syncing…' : '🔄 Sync All'}
+              </button>
+              <button className={styles.btnSecondary} onClick={() => handleSync('series')} disabled={syncing} style={{ fontSize: '0.82rem', padding: '4px 10px' }}>
+                Series
+              </button>
+              <button className={styles.btnSecondary} onClick={() => handleSync('reprints')} disabled={syncing} style={{ fontSize: '0.82rem', padding: '4px 10px' }}>
+                Reprints
+              </button>
+              <button className={styles.btnSecondary} onClick={() => handleSync('artists')} disabled={syncing} style={{ fontSize: '0.82rem', padding: '4px 10px' }}>
+                Artists
+              </button>
+            </div>
           )}
           <button className={styles.btnPrimary} onClick={handleCopy} disabled={!exportRows?.length}>
             {copyMsg || '📋 Copy'}
@@ -316,36 +345,85 @@ export default function Dashboard() {
       {/* ── Artist Alerts ── */}
       {tab === 'artists' && (
         <>
-          <div className={`${styles.tableWrap} ${styles.artistTableWrap}`}>
-            {issuesLoading && <p className={styles.loading}>Loading…</p>}
-            {!issuesLoading && artistIssues.length === 0 && (
-              <p className={styles.empty}>No upcoming issues with tracked artists found.</p>
-            )}
-            {artistIssues.length > 0 && (
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Series</th><th>Issue #</th><th>FOC Date</th>
-                    <th>Release Date</th><th>Covers</th><th>Artists</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {artistIssues.map(issue => (
-                    <tr key={issue.id}>
-                      <td>{issue.series_name}</td>
-                      <td>{issue.issue_number ?? '—'}</td>
-                      <td><FocBadge date={issue.foc_date} /></td>
-                      <td>{formatDate(issue.release_date)}</td>
-                      <td>
+          {artistLoading && <p className={styles.loading}>Loading…</p>}
+          {!artistLoading && artistIssues.length === 0 && (
+            <p className={styles.empty}>No upcoming issues with tracked artists found.</p>
+          )}
+
+          {/* Desktop: one table per artist */}
+          {artistGroups.size > 0 && (
+            <div className={`${styles.tableWrap} ${styles.artistTableWrap}`}>
+              {[...artistGroups.entries()].map(([artistName, groupIssues]) => (
+                <div key={artistName} className={styles.artistGroup}>
+                  <h3 className={styles.artistGroupHeader}>{artistName}</h3>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Series</th><th>Issue #</th><th>FOC Date</th>
+                        <th>Release Date</th><th>Covers</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {groupIssues.map(issue => {
+                        const artistCovers = issue.covers.filter(c => c.artist_names.includes(artistName))
+                        return (
+                          <tr key={issue.id}>
+                            <td>{issue.series_name}</td>
+                            <td>{issue.issue_number ?? '—'}</td>
+                            <td><FocBadge date={issue.foc_date} /></td>
+                            <td>{formatDate(issue.release_date)}</td>
+                            <td>
+                              <div className={styles.coverList}>
+                                {artistCovers.map(c => {
+                                  const content = (
+                                    <>
+                                      {c.cover_image_url && <img src={c.cover_image_url} alt={c.cover_label ?? 'Cover'} className={styles.coverThumb} />}
+                                      <span className={styles.coverLabel}>{c.cover_label ?? 'Cover'}</span>
+                                    </>
+                                  )
+                                  return (
+                                    <div key={c.id} className={styles.coverItem}>
+                                      {c.locg_url
+                                        ? <a href={c.locg_url} target="_blank" rel="noreferrer" className={styles.coverItemLink}>{content}</a>
+                                        : content}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Mobile: grouped cards */}
+          {artistGroups.size > 0 && (
+            <div className={styles.artistCardList}>
+              {[...artistGroups.entries()].map(([artistName, groupIssues]) => (
+                <div key={artistName} className={styles.artistGroup}>
+                  <h3 className={styles.artistGroupHeader}>{artistName}</h3>
+                  {groupIssues.map(issue => {
+                    const artistCovers = issue.covers.filter(c => c.artist_names.includes(artistName))
+                    return (
+                      <div key={issue.id} className={styles.artistCard}>
+                        <div className={styles.focCardHeader}>
+                          <span className={styles.focCardSeries}>{issue.series_name}</span>
+                          <div className={styles.focCardMeta}>
+                            <span>#{issue.issue_number ?? '—'}</span>
+                            <FocBadge date={issue.foc_date} />
+                          </div>
+                        </div>
                         <div className={styles.coverList}>
-                          {issue.covers.map(c => {
+                          {artistCovers.map(c => {
                             const content = (
                               <>
                                 {c.cover_image_url && <img src={c.cover_image_url} alt={c.cover_label ?? 'Cover'} className={styles.coverThumb} />}
-                                <div>
-                                  <span className={styles.coverLabel}>{c.cover_label ?? 'Cover'}</span>
-                                  {c.artist_names.length > 0 && <span className={styles.coverArtist}>{c.artist_names.join(', ')}</span>}
-                                </div>
+                                <span className={styles.coverLabel}>{c.cover_label ?? 'Cover'}</span>
                               </>
                             )
                             return (
@@ -357,52 +435,13 @@ export default function Dashboard() {
                             )
                           })}
                         </div>
-                      </td>
-                      <td>{issue.covers.flatMap(c => c.artist_names).join(', ') || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          <div className={styles.artistCardList}>
-            {issuesLoading && <p className={styles.loading}>Loading…</p>}
-            {!issuesLoading && artistIssues.length === 0 && (
-              <p className={styles.empty}>No upcoming issues with tracked artists found.</p>
-            )}
-            {artistIssues.map(issue => (
-              <div key={issue.id} className={styles.artistCard}>
-                <div className={styles.focCardHeader}>
-                  <span className={styles.focCardSeries}>{issue.series_name}</span>
-                  <div className={styles.focCardMeta}>
-                    <span>#{issue.issue_number ?? '—'}</span>
-                    <FocBadge date={issue.foc_date} />
-                  </div>
-                </div>
-                <div className={styles.coverList}>
-                  {issue.covers.map(c => {
-                    const content = (
-                      <>
-                        {c.cover_image_url && <img src={c.cover_image_url} alt={c.cover_label ?? 'Cover'} className={styles.coverThumb} />}
-                        <div>
-                          <span className={styles.coverLabel}>{c.cover_label ?? 'Cover'}</span>
-                          {c.artist_names.length > 0 && <span className={styles.coverArtist}>{c.artist_names.join(', ')}</span>}
-                        </div>
-                      </>
-                    )
-                    return (
-                      <div key={c.id} className={styles.coverItem}>
-                        {c.locg_url
-                          ? <a href={c.locg_url} target="_blank" rel="noreferrer" className={styles.coverItemLink}>{content}</a>
-                          : content}
                       </div>
                     )
                   })}
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </>
       )}
 
