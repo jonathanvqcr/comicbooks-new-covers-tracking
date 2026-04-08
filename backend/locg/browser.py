@@ -17,8 +17,10 @@ URL patterns discovered by browsing LoCG (documented in endpoints.md):
 
 import asyncio
 import json
+import os
 import re
 import logging
+from datetime import date, timedelta
 from typing import Optional
 from urllib.parse import urljoin, urlparse, urlencode, quote_plus
 
@@ -68,6 +70,61 @@ async def _make_browser_context(playwright) -> tuple:
         "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
     )
     return browser, context
+
+
+# ---------------------------------------------------------------------------
+# LoCG authentication
+# ---------------------------------------------------------------------------
+
+async def _login_to_locg(page: Page) -> bool:
+    """
+    Log in to LoCG using LOCG_USERNAME / LOCG_PASSWORD.
+    Reads from os.environ first, then falls back to the Pydantic settings object
+    (which reads from the .env file via BaseSettings).
+    Returns True if login succeeded, False if credentials missing or login failed.
+    Credentials are never hardcoded.
+    """
+    username = os.environ.get("LOCG_USERNAME", "").strip()
+    password = os.environ.get("LOCG_PASSWORD", "").strip()
+    # Pydantic's BaseSettings reads .env into settings fields but does NOT inject
+    # them into os.environ — fall back to settings object when env vars are absent.
+    if not username or not password:
+        try:
+            from backend.config import settings as _settings
+            username = username or (_settings.locg_username or "").strip()
+            password = password or (_settings.locg_password or "").strip()
+        except Exception:
+            pass
+    if not username or not password:
+        logger.info("LOCG credentials not set — skipping login")
+        return False
+
+    logger.info("Logging into LoCG as %s", username)
+    try:
+        await page.goto(
+            f"{BASE_URL}/login",
+            wait_until="domcontentloaded",
+            timeout=20_000,
+        )
+        await asyncio.sleep(1)
+        await page.fill('input[name="username"]', username)
+        await page.fill('input[name="password"]', password)
+        await page.click('#submit')
+        await page.wait_for_load_state("domcontentloaded")
+        await asyncio.sleep(2)
+
+        # Confirm login: logged-in pages show a logout link or user nav
+        logged_in = await page.evaluate(
+            "() => !!document.querySelector('a[href*=\"/logout\"], a[href*=\"/profile/\"], .user-nav, #user-menu')"
+        )
+        if logged_in:
+            logger.info("LoCG login successful")
+        else:
+            logger.warning("LoCG login may have failed (no logged-in indicator found)")
+        return logged_in
+    except Exception as exc:
+        logger.warning("LoCG login error: %s", exc)
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -328,12 +385,21 @@ async def _scrape_issue_detail_from_html(page: Page) -> dict:
             }
 
             // --- Series info ---
-            const seriesLink = document.querySelector(
-                'a[href*="/comics/series/"], .series-title a, .breadcrumb a[href*="series"]'
-            );
+            // Skip "Submit New Variant Cover" / submit-new-issue links that appear before the real series link.
+            // A valid series link points to /comics/series/{id}/{slug} with no query params.
+            let seriesLink = null;
+            document.querySelectorAll('a[href*="/comics/series/"]').forEach(a => {
+                if (seriesLink) return;
+                const href = a.href;
+                if (href.includes('submit-new-issue') || href.includes('?') || href.includes('/submit')) return;
+                const txt = a.textContent.trim();
+                if (!txt || txt.toLowerCase() === 'series' || txt.toLowerCase() === 'add') return;
+                seriesLink = a;
+            });
             if (seriesLink) {
-                result.series_name = seriesLink.textContent.trim();
-                result.series_url = seriesLink.href;
+                // Strip trailing year range like " (2025 - Present)" from series name
+                result.series_name = seriesLink.textContent.trim().replace(/\s*\(\d{4}[^)]*\)\s*$/, '').trim();
+                result.series_url = seriesLink.href.split('?')[0];
                 const sMatch = seriesLink.href.match(/\\/comics\\/series\\/(\\d+)/);
                 if (sMatch) result.locg_series_id = sMatch[1];
             }
@@ -645,6 +711,230 @@ async def get_series_issues(series_url: str) -> list[dict]:
             await browser.close()
 
     logger.info("Returning %d issues for %s", len(issues), series_url)
+    return issues
+
+
+def _normalize_profile_url(artist_url: str) -> str:
+    """Return the base LoCG creator profile URL, stripping sub-paths like /comics."""
+    m = re.match(r'(https://leagueofcomicgeeks\.com/people/\d+/[^/?#]+)', artist_url)
+    return m.group(1) if m else artist_url
+
+
+_MONTH_MAP = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+
+def _parse_locg_date(text: str) -> Optional[date]:
+    """Parse LoCG date strings like 'MAY 27TH, 2026' or 'APR 15' into a date."""
+    if not text:
+        return None
+    # Full format: "MAY 27TH, 2026"
+    m = re.search(
+        r'(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})',
+        text, re.I,
+    )
+    if m:
+        month = _MONTH_MAP.get(m.group(1).lower())
+        day, year = int(m.group(2)), int(m.group(3))
+        try:
+            return date(year, month, day)
+        except ValueError:
+            return None
+    # Short format: "APR 15" (no year — infer year)
+    m = re.search(r'(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+(\d{1,2})', text, re.I)
+    if m:
+        month = _MONTH_MAP.get(m.group(1).lower())
+        day = int(m.group(2))
+        today = date.today()
+        for year in (today.year, today.year + 1):
+            try:
+                candidate = date(year, month, day)
+                if candidate >= today:
+                    return candidate
+            except ValueError:
+                pass
+    return None
+
+
+async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
+    """
+    Return upcoming issues (within 12 weeks) for a tracked artist.
+
+    Strategy:
+    - If LOCG_USERNAME / LOCG_PASSWORD are set, log in and scrape the full
+      /people/{id}/{slug}/comics page → click 'Issues' tab → read all li[data-comic]
+      elements. Each li's innerText contains the release date ("MAY 27TH, 2026")
+      which is parsed and used to filter to the 12-week window client-side.
+    - Falls back to the public profile page #creator-upcoming section if not
+      logged in or if the /comics page is still restricted.
+
+    Returns list of dicts:
+        locg_issue_id, issue_url, title, issue_number, cover_image_url
+    """
+    profile_url = _normalize_profile_url(artist_url)
+    today = date.today()
+    cutoff = today + timedelta(weeks=12)
+
+    issues: list[dict] = []
+    async with async_playwright() as pw:
+        browser, context = await _make_browser_context(pw)
+        try:
+            page = await context.new_page()
+
+            # ── Attempt login ──
+            logged_in = await _login_to_locg(page)
+
+            if logged_in:
+                comics_url = profile_url.rstrip("/") + "/comics"
+                logger.info("Fetching artist /comics page (authenticated): %s", comics_url)
+                try:
+                    await page.goto(comics_url, wait_until="networkidle", timeout=30_000)
+                except Exception as exc:
+                    logger.warning("networkidle timeout on /comics page: %s", exc)
+                    await page.goto(comics_url, wait_until="domcontentloaded", timeout=20_000)
+                await asyncio.sleep(NAV_DELAY)
+
+                if "restricted" in (await page.title()).lower():
+                    logger.warning("/comics page restricted even after login — falling back")
+                    logged_in = False
+
+            if logged_in:
+                # ── /comics page: click "Issues" tab to get individual issue rows ──
+                issues_tab = await page.query_selector('a.comic-toolbar-list-mode:has-text("Issues")')
+                if issues_tab:
+                    await issues_tab.click()
+                    await asyncio.sleep(3)
+                else:
+                    logger.warning("Issues tab not found on /comics page")
+
+                # Each li[data-comic] has:
+                #   data-comic  = variant/cover ID (our locg_issue_id for the specific cover)
+                #   data-parent = canonical issue ID (used in URL, for get_issue_detail)
+                #   innerText   = contains release date like "MAY 27TH, 2026"
+                raw_issues = await page.evaluate("""
+                    () => {
+                        const results = [];
+                        const seen = new Set();
+                        document.querySelectorAll('li[data-comic][data-parent]').forEach(li => {
+                            const variantId = li.dataset.comic;
+                            const parentId  = li.dataset.parent;
+                            if (!variantId || !parentId) return;
+                            // Deduplicate by canonical parent (same issue, multiple covers)
+                            if (seen.has(parentId)) return;
+                            seen.add(parentId);
+
+                            const a = li.querySelector('a[href*="/comic/"]');
+                            // Always use data-parent as the canonical issue ID in the URL.
+                            // The link href may use a variant/child ID instead of the parent.
+                            let issueUrl = null;
+                            if (a) {
+                                const slug = a.href.split('?')[0].split('/comic/')[1] || '';
+                                const slugParts = slug.split('/');
+                                // If the URL's numeric ID matches data-parent, use it directly.
+                                // Otherwise reconstruct using data-parent + slug from the link.
+                                if (slugParts[0] === parentId) {
+                                    issueUrl = a.href.split('?')[0];
+                                } else {
+                                    // Use data-parent with the slug part (strip variant-specific suffix)
+                                    const cleanSlug = slugParts.slice(1).join('/').replace(/-cover-[a-z]-.*$/, '').replace(/-cover-[a-z]$/, '') || slugParts[0];
+                                    issueUrl = 'https://leagueofcomicgeeks.com/comic/' + parentId + '/' + cleanSlug;
+                                }
+                            }
+
+                            const img = li.querySelector('img');
+                            const src = img
+                                ? ((img.src && !img.src.startsWith('data:')) ? img.src
+                                   : (img.dataset && img.dataset.src) ? img.dataset.src
+                                   : null)
+                                : null;
+
+                            const text = li.innerText || '';
+                            return results.push({
+                                locg_issue_id: parentId,
+                                issue_url: issueUrl,
+                                cover_image_url: src
+                                    ? (src.startsWith('http') ? src : 'https://leagueofcomicgeeks.com' + src)
+                                    : null,
+                                title: img?.alt || '',
+                                date_text: text,
+                            });
+                        });
+                        return results;
+                    }
+                """)
+
+                logger.info("/comics Issues tab: found %d unique issues for %s", len(raw_issues), profile_url)
+
+                # Filter to 12-week window using the date in innerText
+                for raw in raw_issues:
+                    d = _parse_locg_date(raw.get("date_text", ""))
+                    if d is None:
+                        issues.append(raw)  # no date → include, let detail fetch decide
+                    elif today <= d <= cutoff:
+                        issues.append(raw)
+                    # else: past or too far future — skip
+
+                logger.info(
+                    "/comics page: %d total → %d within 12-week window",
+                    len(raw_issues), len(issues),
+                )
+                return issues
+
+            # ── Fallback: public profile page ──
+            logger.info("Fetching artist profile page (public): %s", profile_url)
+            try:
+                await page.goto(profile_url, wait_until="networkidle", timeout=30_000)
+            except Exception as exc:
+                logger.warning("networkidle timeout on profile page: %s", exc)
+                await page.goto(profile_url, wait_until="domcontentloaded", timeout=20_000)
+            await asyncio.sleep(NAV_DELAY)
+
+            raw_issues = await page.evaluate("""
+                () => {
+                    const results = [];
+                    const seen = new Set();
+                    const section = document.querySelector('#comics-upcoming, #creator-upcoming');
+                    const container = section || document;
+                    container.querySelectorAll('a[href*="/comic/"]').forEach(link => {
+                        if (link.href.includes('?variant=') || link.href.includes('/series/')) return;
+                        const m = link.href.match(/\\/comic\\/(\\d+)/);
+                        if (!m || seen.has(m[1])) return;
+                        seen.add(m[1]);
+                        const card = link.closest('.card, li, article') || link.parentElement;
+                        const img = card ? card.querySelector('img') : null;
+                        const src = img
+                            ? ((img.src && !img.src.startsWith('data:')) ? img.src
+                               : (img.dataset && img.dataset.src) ? img.dataset.src
+                               : null)
+                            : null;
+                        const obj = {
+                            locg_issue_id: m[1],
+                            issue_url: link.href,
+                            cover_image_url: src ? (src.startsWith('http') ? src : 'https://leagueofcomicgeeks.com' + src) : null,
+                            title: img?.alt || link.textContent.trim(),
+                            date_text: card?.innerText || '',
+                        };
+                        const nm = obj.title.match(/#(\\d+[A-Za-z]*)/i);
+                        if (nm) obj.issue_number = nm[1];
+                        results.push(obj);
+                    });
+                    return results;
+                }
+            """)
+
+            for raw in raw_issues:
+                d = _parse_locg_date(raw.get("date_text", ""))
+                if d is None or (today <= d <= cutoff):
+                    issues.append(raw)
+
+            logger.info("Profile page: %d upcoming issues for %s", len(issues), profile_url)
+
+        finally:
+            await context.close()
+            await browser.close()
+
     return issues
 
 
