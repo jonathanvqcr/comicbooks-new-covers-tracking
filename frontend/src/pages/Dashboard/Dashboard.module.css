@@ -357,6 +357,31 @@
   }
 }
 
+/* ── Artist grouping ── */
+
+.artistGroup {
+  margin-bottom: 2rem;
+}
+
+.artistGroupHeader {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #bc8cff;
+  letter-spacing: 0.02em;
+  margin: 0 0 0.75rem 0;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.artistGroupLink {
+  color: inherit;
+  text-decoration: none;
+}
+.artistGroupLink:hover {
+  text-decoration: underline;
+  opacity: 0.85;
+}
+
 /* ── Mobile card layout ── */
 
 /* artistCardList hidden on desktop, visible on mobile */

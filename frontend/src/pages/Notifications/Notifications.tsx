@@ -12,6 +12,7 @@ const TYPE_COLORS: Record<NotificationRead['type'], string> = {
   RELEASE_ALERT: '#3fb950',
   REPRINT_ALERT: '#d29922',
   ARTIST_COVER_ALERT: '#bc8cff',
+  COVER_UPDATE_ALERT: '#e3b341',
   SYNC_ERROR: '#f85149',
 }
 
@@ -20,6 +21,7 @@ const TYPE_LABELS: Record<NotificationRead['type'], string> = {
   RELEASE_ALERT: 'Release',
   REPRINT_ALERT: 'Reprint',
   ARTIST_COVER_ALERT: 'Artist Cover',
+  COVER_UPDATE_ALERT: 'New Covers',
   SYNC_ERROR: 'Sync Error',
 }
 

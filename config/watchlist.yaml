@@ -66,11 +66,15 @@ series:
     priority: occasional
 
 artists:
-  - name: "Dan Mora"
-    url: ""
-  - name: "Dan Quintana"
-    url: ""
+  # - name: "Dan Mora"
+  #   url: "https://leagueofcomicgeeks.com/people/9286/dan-mora"
+  # - name: "Dan Quintana"
+  #   url: "https://leagueofcomicgeeks.com/people/32086/dan-quintana"
   - name: "John Giang"
-    url: ""
-  - name: "Greg Capullo"
-    url: ""
+    url: "https://leagueofcomicgeeks.com/people/32333/john-giang/comics"
+  # - name: "Jim Lee"
+  #   url: "https://leagueofcomicgeeks.com/people/258/jim-lee"
+  # - name: "Clayton Crain"
+  #   url: "https://leagueofcomicgeeks.com/people/1310/clayton-crain"
+  - name: "KyuYong Eom"
+    url: "https://leagueofcomicgeeks.com/people/39546/kyuyong-eom"    

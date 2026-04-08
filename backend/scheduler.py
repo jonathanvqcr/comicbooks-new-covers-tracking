@@ -29,6 +29,36 @@ def _job_sync_releases():
         logger.exception("Scheduled sync_releases failed: %s", exc)
 
 
+def _job_sync_series():
+    """Wrapper for sync_series — catches all exceptions so scheduler stays alive."""
+    try:
+        from backend.jobs.sync_releases import sync_series
+        result = sync_series()
+        logger.info("Scheduled sync_series complete: %s", result)
+    except Exception as exc:
+        logger.exception("Scheduled sync_series failed: %s", exc)
+
+
+def _job_sync_reprints():
+    """Wrapper for sync_reprints — catches all exceptions so scheduler stays alive."""
+    try:
+        from backend.jobs.sync_releases import sync_reprints
+        result = sync_reprints()
+        logger.info("Scheduled sync_reprints complete: %s", result)
+    except Exception as exc:
+        logger.exception("Scheduled sync_reprints failed: %s", exc)
+
+
+def _job_sync_artists():
+    """Wrapper for sync_artists — catches all exceptions so scheduler stays alive."""
+    try:
+        from backend.jobs.sync_releases import sync_artists
+        result = sync_artists()
+        logger.info("Scheduled sync_artists complete: %s", result)
+    except Exception as exc:
+        logger.exception("Scheduled sync_artists failed: %s", exc)
+
+
 def _job_generate_report():
     """Wrapper for generate_weekly_report — catches all exceptions."""
     try:
@@ -115,4 +145,61 @@ def trigger_sync_now() -> str:
         name="Manual sync",
     )
     logger.info("Manual sync triggered, job_id=%s", job.id)
+    return job.id
+
+
+def trigger_sync_series_now() -> str:
+    """Trigger sync_series immediately as a one-shot job. Returns a job ID string."""
+    scheduler = get_scheduler()
+    if not scheduler.running:
+        start_scheduler()
+
+    from apscheduler.triggers.date import DateTrigger
+    from datetime import datetime
+
+    job = scheduler.add_job(
+        _job_sync_series,
+        trigger=DateTrigger(run_date=datetime.now()),
+        id=f"sync_series_now_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        name="Manual sync — series",
+    )
+    logger.info("Manual sync_series triggered, job_id=%s", job.id)
+    return job.id
+
+
+def trigger_sync_reprints_now() -> str:
+    """Trigger sync_reprints immediately as a one-shot job. Returns a job ID string."""
+    scheduler = get_scheduler()
+    if not scheduler.running:
+        start_scheduler()
+
+    from apscheduler.triggers.date import DateTrigger
+    from datetime import datetime
+
+    job = scheduler.add_job(
+        _job_sync_reprints,
+        trigger=DateTrigger(run_date=datetime.now()),
+        id=f"sync_reprints_now_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        name="Manual sync — reprints",
+    )
+    logger.info("Manual sync_reprints triggered, job_id=%s", job.id)
+    return job.id
+
+
+def trigger_sync_artists_now() -> str:
+    """Trigger sync_artists immediately as a one-shot job. Returns a job ID string."""
+    scheduler = get_scheduler()
+    if not scheduler.running:
+        start_scheduler()
+
+    from apscheduler.triggers.date import DateTrigger
+    from datetime import datetime
+
+    job = scheduler.add_job(
+        _job_sync_artists,
+        trigger=DateTrigger(run_date=datetime.now()),
+        id=f"sync_artists_now_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        name="Manual sync — artists",
+    )
+    logger.info("Manual sync_artists triggered, job_id=%s", job.id)
     return job.id

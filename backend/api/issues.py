@@ -53,6 +53,18 @@ def _build_issue_read(issue: Issue, db: Session) -> IssueRead:
     )
 
 
+@router.get("/artists/tracked")
+def get_tracked_artists(db: Session = Depends(get_db)):
+    """Return all tracked artists with their name and LoCG profile URL."""
+    artists = (
+        db.query(Artist)
+        .filter(Artist.is_tracked == True)  # noqa: E712
+        .order_by(Artist.name.asc())
+        .all()
+    )
+    return [{"name": a.name, "locg_url": a.locg_url} for a in artists]
+
+
 @router.get("/issues/upcoming", response_model=List[IssueRead])
 def get_upcoming_issues(db: Session = Depends(get_db)):
     cutoff = date.today() + timedelta(weeks=12)

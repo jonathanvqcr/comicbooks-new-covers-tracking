@@ -1,6 +1,11 @@
 // API contract — mirrors backend/schemas.py
 // Do not modify without also updating schemas.py
 
+export interface TrackedArtist {
+  name: string;
+  locg_url: string | null;
+}
+
 export interface SeriesRead {
   id: number;
   name: string;
@@ -65,7 +70,7 @@ export interface ArtistRead {
 
 export interface NotificationRead {
   id: number;
-  type: 'FOC_ALERT' | 'RELEASE_ALERT' | 'REPRINT_ALERT' | 'ARTIST_COVER_ALERT' | 'SYNC_ERROR';
+  type: 'FOC_ALERT' | 'RELEASE_ALERT' | 'REPRINT_ALERT' | 'ARTIST_COVER_ALERT' | 'COVER_UPDATE_ALERT' | 'SYNC_ERROR';
   title: string;
   body: string | null;
   issue_id: number | null;

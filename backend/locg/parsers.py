@@ -351,7 +351,9 @@ def _normalize_cover_label(label: str | None) -> Optional[str]:
         return None
     label = label.strip()
     for pattern, formatter in _LABEL_PATTERNS:
-        m = pattern.fullmatch(label) or pattern.search(label)
+        # Only fullmatch — never use search(), which would collapse rich labels like
+        # "Cover E Bengal Foil Virgin Variant" → "Virgin Cover" (losing all identifying info)
+        m = pattern.fullmatch(label)
         if m:
             return formatter(m) if callable(formatter) else formatter
     return label

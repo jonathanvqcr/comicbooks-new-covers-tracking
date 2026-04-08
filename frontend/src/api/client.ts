@@ -7,6 +7,7 @@ import type {
   ReportRead,
   SyncLogRead,
   SyncNowResponse,
+  TrackedArtist,
   UnreadCountRead,
 } from '../types'
 
@@ -56,6 +57,8 @@ export const api = {
     isStatic() ? getStatic<IssueRead[]>('upcoming-issues.json') : get<IssueRead[]>('/issues/upcoming'),
   getArtistAlerts: () =>
     isStatic() ? getStatic<IssueRead[]>('artist-alerts.json') : get<IssueRead[]>('/issues/artist-alerts'),
+  getTrackedArtists: () =>
+    isStatic() ? getStatic<TrackedArtist[]>('tracked-artists.json') : get<TrackedArtist[]>('/artists/tracked'),
   getFocExport: () =>
     isStatic() ? getStatic<FocExportRow[]>('foc-export.json') : get<FocExportRow[]>('/issues/foc-export'),
   getReprints: () =>

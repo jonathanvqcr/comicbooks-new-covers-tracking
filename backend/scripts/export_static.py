@@ -79,6 +79,18 @@ def _build_issue_read(issue: Issue) -> IssueRead:
     )
 
 
+def export_tracked_artists(db) -> None:
+    artists = (
+        db.query(Artist)
+        .filter(Artist.is_tracked == True)
+        .order_by(Artist.name.asc())
+        .all()
+    )
+    data = [{"name": a.name, "locg_url": a.locg_url} for a in artists]
+    _write("tracked-artists.json", data)
+    print(f"    {len(data)} tracked artists")
+
+
 def export_artist_alerts(db) -> None:
     """Issues with tracked artist covers — includes 6-week lookback for retailer exclusives."""
     from sqlalchemy import and_
@@ -315,6 +327,7 @@ def main() -> None:
     print("Exporting static data…")
     db = SessionLocal()
     try:
+        export_tracked_artists(db)
         export_artist_alerts(db)
         export_upcoming_issues(db)
         export_foc(db)

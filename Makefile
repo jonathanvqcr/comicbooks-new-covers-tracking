@@ -27,4 +27,4 @@ publish: export
 	git add frontend/public/data/
 	git diff --staged --quiet || git commit -m "chore: update static data [skip ci]"
 	git push
-	~/.nvm/versions/node/v22.12.0/bin/vercel --prod --yes
+	PATH="$(HOME)/.nvm/versions/node/v22.12.0/bin:$(PATH)" vercel --prod --yes

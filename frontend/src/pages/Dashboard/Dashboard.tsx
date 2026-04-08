@@ -140,11 +140,19 @@ export default function Dashboard() {
   const { data: exportRows, loading: exportLoading, refetch: refetchExport } = useApi(() => api.getFocExport(), [isAdmin])
   const { data: reprintRows, loading: reprintsLoading, refetch: refetchReprints } = useApi(() => api.getReprints(), [isAdmin])
   const { data: artistAlerts, loading: artistLoading, refetch: refetchArtists } = useApi(() => api.getArtistAlerts(), [isAdmin])
+  const { data: trackedArtists } = useApi(() => api.getTrackedArtists(), [isAdmin])
   const { data: syncLogs, refetch: refetchLogs } = useApi(() => api.getSyncLogs(), [isAdmin])
 
   const lastSync = syncLogs?.[0]
   const hasError = lastSync?.status === 'error'
   const artistIssues = artistAlerts ?? []
+
+  // name → LoCG profile URL map for group header links
+  const artistUrlMap: Map<string, string | null> = React.useMemo(() => {
+    const map = new Map<string, string | null>()
+    for (const a of trackedArtists ?? []) map.set(a.name, a.locg_url)
+    return map
+  }, [trackedArtists])
 
   // Group issues by artist name → { artistName: issues[] }
   const artistGroups: Map<string, IssueRead[]> = React.useMemo(() => {
@@ -355,7 +363,11 @@ export default function Dashboard() {
             <div className={`${styles.tableWrap} ${styles.artistTableWrap}`}>
               {[...artistGroups.entries()].map(([artistName, groupIssues]) => (
                 <div key={artistName} className={styles.artistGroup}>
-                  <h3 className={styles.artistGroupHeader}>{artistName}</h3>
+                  <h3 className={styles.artistGroupHeader}>
+                    {artistUrlMap.get(artistName)
+                      ? <a href={artistUrlMap.get(artistName)!} target="_blank" rel="noreferrer" className={styles.artistGroupLink}>{artistName}</a>
+                      : artistName}
+                  </h3>
                   <table className={styles.table}>
                     <thead>
                       <tr>
@@ -406,7 +418,11 @@ export default function Dashboard() {
             <div className={styles.artistCardList}>
               {[...artistGroups.entries()].map(([artistName, groupIssues]) => (
                 <div key={artistName} className={styles.artistGroup}>
-                  <h3 className={styles.artistGroupHeader}>{artistName}</h3>
+                  <h3 className={styles.artistGroupHeader}>
+                    {artistUrlMap.get(artistName)
+                      ? <a href={artistUrlMap.get(artistName)!} target="_blank" rel="noreferrer" className={styles.artistGroupLink}>{artistName}</a>
+                      : artistName}
+                  </h3>
                   {groupIssues.map(issue => {
                     const artistCovers = issue.covers.filter(c => c.artist_names.includes(artistName))
                     return (

@@ -156,7 +156,20 @@
       "WebFetch(domain:comicbooks-new-covers-tracking.vercel.app)",
       "Bash(git add vercel.json Makefile)",
       "Bash(git push)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(python3 -c \"import json,sys; logs=json.load\\(sys.stdin\\); print\\(json.dumps\\(logs[0], indent=2\\)\\)\")",
+      "Bash(make publish:*)",
+      "Bash(backend/.venv/bin/python3:*)",
+      "Bash(kill 61906 61911 61910 61912 61905)",
+      "Bash(make export:*)",
+      "Bash(curl -s -X POST http://localhost:8000/api/admin/sync-now/artists)",
+      "Bash(grep -v \"^$\")",
+      "Bash(grep -v \"^--$\")",
+      "Bash(brew install:*)",
+      "Bash(python3 -c \"from backend.api.issues import router; print\\(''API OK''\\)\")",
+      "Bash(export PATH=\"/usr/local/bin:/opt/homebrew/bin:$PATH\")",
+      "Bash(ls /Users/jonathanvelasquez/Code/comicbooks-new-covers-tracking/*.env)",
+      "Bash(ls /Users/jonathanvelasquez/Code/comicbooks-new-covers-tracking/.env*)"
     ]
   }
 }

@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     email_from: str = ""
     email_password: str = ""
     report_email: str = ""
+    locg_username: str = ""
+    locg_password: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
