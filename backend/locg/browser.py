@@ -816,14 +816,14 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
                 raw_issues = await page.evaluate("""
                     () => {
                         const results = [];
-                        const seen = new Set();
+                        // Do NOT deduplicate here — an artist may have multiple covers on the
+                        // same issue. Each variant li has its own date in innerText; we need ALL
+                        // of them so date filtering uses the artist's actual cover date, not
+                        // whichever other artist's cover happened to appear first in the list.
                         document.querySelectorAll('li[data-comic][data-parent]').forEach(li => {
                             const variantId = li.dataset.comic;
                             const parentId  = li.dataset.parent;
                             if (!variantId || !parentId) return;
-                            // Deduplicate by canonical parent (same issue, multiple covers)
-                            if (seen.has(parentId)) return;
-                            seen.add(parentId);
 
                             const a = li.querySelector('a[href*="/comic/"]');
                             // Always use data-parent as the canonical issue ID in the URL.
@@ -851,7 +851,7 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
                                 : null;
 
                             const text = li.innerText || '';
-                            return results.push({
+                            results.push({
                                 locg_issue_id: parentId,
                                 issue_url: issueUrl,
                                 cover_image_url: src
@@ -865,19 +865,25 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
                     }
                 """)
 
-                logger.info("/comics Issues tab: found %d unique issues for %s", len(raw_issues), profile_url)
+                logger.info("/comics Issues tab: found %d variant entries for %s", len(raw_issues), profile_url)
 
-                # Filter to 12-week window using the date in innerText
+                # Filter to 12-week window, then deduplicate by parentId.
+                # Dedup happens AFTER date filter so an artist's cover isn't dropped because
+                # a different cover for the same issue appeared earlier with an out-of-window date.
+                seen_parents: set = set()
                 for raw in raw_issues:
                     d = _parse_locg_date(raw.get("date_text", ""))
-                    if d is None:
-                        issues.append(raw)  # no date → include, let detail fetch decide
-                    elif today <= d <= cutoff:
-                        issues.append(raw)
-                    # else: past or too far future — skip
+                    if d is not None and not (today <= d <= cutoff):
+                        continue  # outside window
+                    pid = raw.get("locg_issue_id")
+                    if pid and pid in seen_parents:
+                        continue  # already have this issue
+                    if pid:
+                        seen_parents.add(pid)
+                    issues.append(raw)
 
                 logger.info(
-                    "/comics page: %d total → %d within 12-week window",
+                    "/comics page: %d variants → %d unique issues in 12-week window",
                     len(raw_issues), len(issues),
                 )
                 return issues

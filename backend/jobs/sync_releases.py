@@ -606,6 +606,31 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
                             db.commit()
                             logger.info("    Linked %s → %s", artist.name, cover.cover_label)
 
+                # If the artist still has no cover link on this issue, they are the Cover A
+                # (primary) artist — LoCG doesn't list Cover A in the variant section.
+                # Create a Cover A entry using the issue's main cover image and link them.
+                already_linked = db.query(CoverArtist).join(IssueCover).filter(
+                    IssueCover.issue_id == issue.id,
+                    CoverArtist.artist_id == artist.id,
+                ).first()
+                if not already_linked:
+                    cover_a = db.query(IssueCover).filter(
+                        IssueCover.issue_id == issue.id,
+                        IssueCover.cover_label == "Cover A",
+                    ).first()
+                    if not cover_a:
+                        cover_a = IssueCover(
+                            issue_id=issue.id,
+                            cover_label="Cover A",
+                            cover_image_url=issue.cover_image_url,
+                        )
+                        db.add(cover_a)
+                        db.flush()
+                        db.commit()
+                    db.add(CoverArtist(issue_cover_id=cover_a.id, artist_id=artist.id))
+                    db.commit()
+                    logger.info("    Linked %s → Cover A for %s #%s", artist.name, series_name, issue.issue_number)
+
         except Exception as artist_exc:
             msg = f"Artist profile sync '{artist.name}': {artist_exc}"
             logger.error(msg)
