@@ -169,7 +169,11 @@
       "Bash(python3 -c \"from backend.api.issues import router; print\\(''API OK''\\)\")",
       "Bash(export PATH=\"/usr/local/bin:/opt/homebrew/bin:$PATH\")",
       "Bash(ls /Users/jonathanvelasquez/Code/comicbooks-new-covers-tracking/*.env)",
-      "Bash(ls /Users/jonathanvelasquez/Code/comicbooks-new-covers-tracking/.env*)"
+      "Bash(ls /Users/jonathanvelasquez/Code/comicbooks-new-covers-tracking/.env*)",
+      "Bash(head -20 grep -n \"locg_url\\\\|artist_url\\\\|getTrackedArtists\" /Users/jonathanvelasquez/Code/comicbooks-new-covers-tracking/backend/api/artists.py)",
+      "Bash(/usr/local/bin/npm run:*)",
+      "Bash(source ~/.zshrc)",
+      "Bash(nvm use:*)"
     ]
   }
 }

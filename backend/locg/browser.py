@@ -763,19 +763,29 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
     Return upcoming issues (within 12 weeks) for a tracked artist.
 
     Strategy:
-    - If LOCG_USERNAME / LOCG_PASSWORD are set, log in and scrape the full
-      /people/{id}/{slug}/comics page → click 'Issues' tab → read all li[data-comic]
-      elements. Each li's innerText contains the release date ("MAY 27TH, 2026")
-      which is parsed and used to filter to the 12-week window client-side.
+    - Extract creator ID from the profile URL (the numeric segment after /people/).
+    - Log in, navigate to /comics page to establish session cookies, then call
+      LoCG's internal get_comics API directly with a date range filter.
+      This matches exactly what the UI shows when you open the page and filter
+      by release date (from today to 12 weeks out).
     - Falls back to the public profile page #creator-upcoming section if not
-      logged in or if the /comics page is still restricted.
+      logged in or if login fails.
 
     Returns list of dicts:
         locg_issue_id, issue_url, title, issue_number, cover_image_url
     """
+    # Extract creator ID from URL: .../people/{id}/... or .../people/{id}
+    creator_id_match = re.search(r"/people/(\d+)", artist_url)
+    if not creator_id_match:
+        logger.error("Cannot extract creator ID from URL: %s", artist_url)
+        return []
+    creator_id = creator_id_match.group(1)
+
     profile_url = _normalize_profile_url(artist_url)
     today = date.today()
     cutoff = today + timedelta(weeks=12)
+    from_date_str = today.strftime("%m/%d/%Y")
+    to_date_str = cutoff.strftime("%m/%d/%Y")
 
     issues: list[dict] = []
     async with async_playwright() as pw:
@@ -801,92 +811,85 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
                     logged_in = False
 
             if logged_in:
-                # ── /comics page: click "Issues" tab to get individual issue rows ──
-                issues_tab = await page.query_selector('a.comic-toolbar-list-mode:has-text("Issues")')
-                if issues_tab:
-                    await issues_tab.click()
-                    await asyncio.sleep(3)
-                else:
-                    logger.warning("Issues tab not found on /comics page")
+                # ── Call get_comics API directly with date range filter ──
+                # This is the same AJAX endpoint LoCG's UI calls when you apply the
+                # Release Date filter — much more reliable than interacting with the
+                # jQuery datepicker widget.
+                from urllib.parse import urlencode as _urlencode
+                params = {
+                    "addons": "1",
+                    "list": "creator",
+                    "list_mode": "issues",
+                    "list_mode_offset": "0",
+                    "view": "thumbs",
+                    "order": "date-desc",
+                    "date_type": "",
+                    "date": from_date_str,
+                    "date_end": to_date_str,
+                    "series_id": "0",
+                    "creators": creator_id,
+                    "character": "",
+                    "title": "",
+                    "starts_with": "",
+                }
+                query = _urlencode(params)
+                for r in ["16", "1", "2", "9", "8", "19", "3", "28", "26"]:
+                    query += f"&role%5B%5D={r}"
+                query += "&format%5B%5D=1"
+                api_url = f"{BASE_URL}/comic/get_comics?{query}"
 
-                # Each li[data-comic] has:
-                #   data-comic  = variant/cover ID (our locg_issue_id for the specific cover)
-                #   data-parent = canonical issue ID (used in URL, for get_issue_detail)
-                #   innerText   = contains release date like "MAY 27TH, 2026"
-                raw_issues = await page.evaluate("""
-                    () => {
-                        const results = [];
-                        // Do NOT deduplicate here — an artist may have multiple covers on the
-                        // same issue. Each variant li has its own date in innerText; we need ALL
-                        // of them so date filtering uses the artist's actual cover date, not
-                        // whichever other artist's cover happened to appear first in the list.
-                        document.querySelectorAll('li[data-comic][data-parent]').forEach(li => {
-                            const variantId = li.dataset.comic;
-                            const parentId  = li.dataset.parent;
-                            if (!variantId || !parentId) return;
+                try:
+                    resp_text = await page.evaluate(
+                        f"async () => {{ const r = await fetch({json.dumps(api_url)}); return r.text(); }}"
+                    )
+                    api_data = json.loads(resp_text)
+                    list_html = api_data.get("list", "")
+                    logger.info(
+                        "get_comics API: count=%s for creator %s (%s→%s)",
+                        api_data.get("count", "?"), creator_id, from_date_str, to_date_str,
+                    )
+                except Exception as exc:
+                    logger.warning("get_comics API call failed: %s — falling back to HTML scrape", exc)
+                    list_html = ""
 
-                            const a = li.querySelector('a[href*="/comic/"]');
-                            // Always use data-parent as the canonical issue ID in the URL.
-                            // The link href may use a variant/child ID instead of the parent.
-                            let issueUrl = null;
-                            if (a) {
-                                const slug = a.href.split('?')[0].split('/comic/')[1] || '';
-                                const slugParts = slug.split('/');
-                                // If the URL's numeric ID matches data-parent, use it directly.
-                                // Otherwise reconstruct using data-parent + slug from the link.
-                                if (slugParts[0] === parentId) {
-                                    issueUrl = a.href.split('?')[0];
-                                } else {
-                                    // Use data-parent with the slug part (strip variant-specific suffix)
-                                    const cleanSlug = slugParts.slice(1).join('/').replace(/-cover-[a-z]-.*$/, '').replace(/-cover-[a-z]$/, '') || slugParts[0];
-                                    issueUrl = 'https://leagueofcomicgeeks.com/comic/' + parentId + '/' + cleanSlug;
-                                }
-                            }
+                if list_html:
+                    # Parse li[data-comic] from the returned HTML fragment.
+                    # In Issues mode every li has data-parent="0" and data-comic = canonical issue ID.
+                    seen_ids: set = set()
+                    for m in re.finditer(
+                        r'<li[^>]+data-comic="(\d+)"[^>]+data-parent="(\d+)"[^>]*>(.*?)</li>',
+                        list_html,
+                        re.DOTALL,
+                    ):
+                        variant_id, parent_id, inner = m.group(1), m.group(2), m.group(3)
+                        # In Issues mode parent_id=="0" → the item IS the canonical issue
+                        canonical_id = variant_id if parent_id == "0" else parent_id
+                        if canonical_id in seen_ids:
+                            continue
+                        seen_ids.add(canonical_id)
 
-                            const img = li.querySelector('img');
-                            const src = img
-                                ? ((img.src && !img.src.startsWith('data:')) ? img.src
-                                   : (img.dataset && img.dataset.src) ? img.dataset.src
-                                   : null)
-                                : null;
+                        # Extract issue URL from first <a href="/comic/...">
+                        href_m = re.search(r'href="(/comic/(\d+)/([^"?]+))"', inner)
+                        issue_url = None
+                        if href_m:
+                            href_id = href_m.group(2)
+                            slug = href_m.group(3)
+                            # Always build URL using canonical ID
+                            issue_url = f"{BASE_URL}/comic/{canonical_id}/{slug}" if href_id != canonical_id else f"{BASE_URL}{href_m.group(1)}"
 
-                            const text = li.innerText || '';
-                            results.push({
-                                locg_issue_id: parentId,
-                                issue_url: issueUrl,
-                                cover_image_url: src
-                                    ? (src.startsWith('http') ? src : 'https://leagueofcomicgeeks.com' + src)
-                                    : null,
-                                title: img?.alt || '',
-                                date_text: text,
-                            });
-                        });
-                        return results;
-                    }
-                """)
+                        # Extract plain text (strips tags) for date parsing
+                        inner_text = re.sub(r"<[^>]+>", " ", inner)
 
-                logger.info("/comics Issues tab: found %d variant entries for %s", len(raw_issues), profile_url)
+                        issues.append({
+                            "locg_issue_id": canonical_id,
+                            "issue_url": issue_url,
+                            "cover_image_url": None,  # lazy-loaded in HTML; series sync has real URLs
+                            "title": "",
+                            "date_text": inner_text,
+                        })
 
-                # Filter to 12-week window, then deduplicate by parentId.
-                # Dedup happens AFTER date filter so an artist's cover isn't dropped because
-                # a different cover for the same issue appeared earlier with an out-of-window date.
-                seen_parents: set = set()
-                for raw in raw_issues:
-                    d = _parse_locg_date(raw.get("date_text", ""))
-                    if d is not None and not (today <= d <= cutoff):
-                        continue  # outside window
-                    pid = raw.get("locg_issue_id")
-                    if pid and pid in seen_parents:
-                        continue  # already have this issue
-                    if pid:
-                        seen_parents.add(pid)
-                    issues.append(raw)
-
-                logger.info(
-                    "/comics page: %d variants → %d unique issues in 12-week window",
-                    len(raw_issues), len(issues),
-                )
-                return issues
+                    logger.info("get_comics API: %d unique issues for creator %s", len(issues), creator_id)
+                    return issues
 
             # ── Fallback: public profile page ──
             logger.info("Fetching artist profile page (public): %s", profile_url)

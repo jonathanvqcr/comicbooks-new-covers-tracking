@@ -119,9 +119,13 @@ def _upsert_issue(db: Session, raw: dict, series_id: int) -> Optional[Issue]:
         if parsed.get("issue_url"):
             new_url = parsed["issue_url"]
             locg_id_str = str(locg_id) if locg_id else ""
-            # Prefer URLs that contain the canonical locg_issue_id over variant URLs
-            if not row.locg_url or (locg_id_str and locg_id_str in new_url and locg_id_str not in row.locg_url):
-                row.locg_url = new_url
+            # Never store a variant URL (?variant= or /cover-X- slug) as the canonical locg_url
+            is_variant_url = "?variant=" in new_url or (
+                locg_id_str and locg_id_str not in new_url
+            )
+            if not is_variant_url:
+                if not row.locg_url or (locg_id_str and locg_id_str in new_url and locg_id_str not in row.locg_url):
+                    row.locg_url = new_url
 
     db.commit()
     return row
@@ -520,10 +524,42 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
                 locg_issue_id = raw_issue.get("locg_issue_id")
 
                 # Check if we already have this issue (and it's in a followed series) —
-                # if so, the main series sync already handles it; skip to avoid dup detail fetches
+                # if so, skip the expensive detail fetch; covers already populated by series sync.
                 existing = db.query(Issue).filter(Issue.locg_issue_id == locg_issue_id).first() if locg_issue_id else None
                 if existing and existing.series and existing.series.is_followed:
-                    # Still ensure artist-cover link exists (label scan done in alert_artists)
+                    # Still ensure artist-cover link exists on the already-synced issue
+                    issue = existing
+                    for cover in db.query(IssueCover).filter(IssueCover.issue_id == issue.id).all():
+                        if cover.cover_label and artist.name.lower() in cover.cover_label.lower():
+                            existing_link = db.query(CoverArtist).filter(
+                                CoverArtist.issue_cover_id == cover.id,
+                                CoverArtist.artist_id == artist.id,
+                            ).first()
+                            if not existing_link:
+                                db.add(CoverArtist(issue_cover_id=cover.id, artist_id=artist.id))
+                                db.commit()
+                                logger.info("    Linked %s → %s (followed series)", artist.name, cover.cover_label)
+                    already_linked = db.query(CoverArtist).join(IssueCover).filter(
+                        IssueCover.issue_id == issue.id,
+                        CoverArtist.artist_id == artist.id,
+                    ).first()
+                    if not already_linked:
+                        cover_a = db.query(IssueCover).filter(
+                            IssueCover.issue_id == issue.id,
+                            IssueCover.cover_label == "Cover A",
+                        ).first()
+                        if not cover_a:
+                            cover_a = IssueCover(
+                                issue_id=issue.id,
+                                cover_label="Cover A",
+                                cover_image_url=issue.cover_image_url,
+                            )
+                            db.add(cover_a)
+                            db.flush()
+                            db.commit()
+                        db.add(CoverArtist(issue_cover_id=cover_a.id, artist_id=artist.id))
+                        db.commit()
+                        logger.info("    Linked %s → Cover A for %s (followed series)", artist.name, issue.title)
                     continue
 
                 # Fetch full detail to get series info, FOC date, and cover variants
@@ -583,6 +619,9 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
                     issue.foc_date = foc
                     db.commit()
                 rel = _parse_date(raw_detail.get("release_date_raw"))
+                # Fallback: parse release date from the li text returned by get_comics API
+                if not rel and raw_issue.get("date_text"):
+                    rel = _parse_date(raw_issue["date_text"])
                 if rel and not issue.release_date:
                     issue.release_date = rel
                     db.commit()

@@ -17,10 +17,10 @@ def _build_issue_read(issue: Issue, db: Session) -> IssueRead:
         artist_names = [
             ca.artist.name for ca in cover.cover_artists if ca.artist
         ]
-        cover_locg_url = (
-            f"{issue.locg_url}?variant={cover.locg_cover_id}"
-            if issue.locg_url and cover.locg_cover_id else None
-        )
+        if issue.locg_url and cover.locg_cover_id:
+            cover_locg_url = f"{issue.locg_url}?variant={cover.locg_cover_id}"
+        else:
+            cover_locg_url = issue.locg_url  # Cover A fallback: link to the issue page
         covers.append(IssueCoverRead(
             id=cover.id,
             cover_label=cover.cover_label,
