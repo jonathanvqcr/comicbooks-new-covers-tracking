@@ -570,7 +570,11 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
                     continue
 
                 # Get / create the series (not followed — won't pollute FOC Calendar)
-                series_name = raw_detail.get("series_name") or raw_issue.get("title", "").split(" #")[0].strip()
+                series_name = (
+                    raw_detail.get("series_name")
+                    or raw_issue.get("title", "").split(" #")[0].strip()
+                    or raw_detail.get("full_title", "").split(" #")[0].strip()
+                )
                 locg_series_id = raw_detail.get("locg_series_id")
                 series_url = raw_detail.get("series_url")
 
