@@ -50,6 +50,9 @@ series:
   - name: "Phantom of the Opera"
     url: "https://leagueofcomicgeeks.com/comics/series/201089/universal-monsters-phantom-of-the-opera"
     priority: regular
+  - name: "Batman"
+    url: "https://leagueofcomicgeeks.com/comics/series/186408/batman"
+    priority: regular
 
   # Crossovers / occasional
   - name: "Batman/Deadpool"
@@ -77,4 +80,16 @@ artists:
   - name: "Clayton Crain"
     url: "https://leagueofcomicgeeks.com/people/1310/clayton-crain/comics"
   - name: "KyuYong Eom"
-    url: "https://leagueofcomicgeeks.com/people/39546/kyuyong-eom/comics"    
+    url: "https://leagueofcomicgeeks.com/people/39546/kyuyong-eom/comics"
+  - name: "Carla Cohen"
+    url: "https://leagueofcomicgeeks.com/people/31749/carla-cohen/comics"
+  - name: "Seth Mann"
+    url: "https://leagueofcomicgeeks.com/people/1257/seth-mann/comics"
+  - name: "Clay Mann"
+    url: "https://leagueofcomicgeeks.com/people/703/clay-mann/comics"
+  - name: "Tyler Kirkham"
+    url: "https://leagueofcomicgeeks.com/people/320/tyler-kirkham/comics"
+  - name: "Dexter Soy"
+    url: "https://leagueofcomicgeeks.com/people/2400/dexter-soy/comics"
+  - name: "Mario Foccillo"
+    url: "https://leagueofcomicgeeks.com/people/49957/mario-foccillo/comics"

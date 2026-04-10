@@ -835,7 +835,7 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
                 query = _urlencode(params)
                 for r in ["16", "1", "2", "9", "8", "19", "3", "28", "26"]:
                     query += f"&role%5B%5D={r}"
-                query += "&format%5B%5D=1"
+                # No format filter — include single issues, omnibuses, etc. to match what LoCG shows
                 api_url = f"{BASE_URL}/comic/get_comics?{query}"
 
                 try:
@@ -854,7 +854,8 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
 
                 if list_html:
                     # Parse li[data-comic] from the returned HTML fragment.
-                    # In Issues mode every li has data-parent="0" and data-comic = canonical issue ID.
+                    # data-comic is the variant ID; canonical ID is always in the href
+                    # (e.g. href="/comic/8193797/absolute-wonder-woman-20?variant=8197001")
                     seen_ids: set = set()
                     for m in re.finditer(
                         r'<li[^>]+data-comic="(\d+)"[^>]+data-parent="(\d+)"[^>]*>(.*?)</li>',
@@ -862,20 +863,21 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
                         re.DOTALL,
                     ):
                         variant_id, parent_id, inner = m.group(1), m.group(2), m.group(3)
-                        # In Issues mode parent_id=="0" → the item IS the canonical issue
-                        canonical_id = variant_id if parent_id == "0" else parent_id
+
+                        # Extract href — the numeric ID in the href path is the canonical issue ID
+                        href_m = re.search(r'href="(/comic/(\d+)/([^"?]+))', inner)
+                        if href_m:
+                            canonical_id = href_m.group(2)
+                            slug = href_m.group(3)
+                            issue_url = f"{BASE_URL}/comic/{canonical_id}/{slug}"
+                        else:
+                            # Fallback: use parent_id if non-zero, else variant_id
+                            canonical_id = parent_id if parent_id != "0" else variant_id
+                            issue_url = None
+
                         if canonical_id in seen_ids:
                             continue
                         seen_ids.add(canonical_id)
-
-                        # Extract issue URL from first <a href="/comic/...">
-                        href_m = re.search(r'href="(/comic/(\d+)/([^"?]+))"', inner)
-                        issue_url = None
-                        if href_m:
-                            href_id = href_m.group(2)
-                            slug = href_m.group(3)
-                            # Always build URL using canonical ID
-                            issue_url = f"{BASE_URL}/comic/{canonical_id}/{slug}" if href_id != canonical_id else f"{BASE_URL}{href_m.group(1)}"
 
                         # Extract plain text (strips tags) for date parsing
                         inner_text = re.sub(r"<[^>]+>", " ", inner)
