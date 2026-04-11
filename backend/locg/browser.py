@@ -797,12 +797,12 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
             logged_in = await _login_to_locg(page)
 
             if logged_in:
+                # ── Navigate to artist /comics page ──
                 comics_url = profile_url.rstrip("/") + "/comics"
-                logger.info("Fetching artist /comics page (authenticated): %s", comics_url)
+                logger.info("Navigating to artist /comics page: %s", comics_url)
                 try:
                     await page.goto(comics_url, wait_until="networkidle", timeout=30_000)
-                except Exception as exc:
-                    logger.warning("networkidle timeout on /comics page: %s", exc)
+                except Exception:
                     await page.goto(comics_url, wait_until="domcontentloaded", timeout=20_000)
                 await asyncio.sleep(NAV_DELAY)
 
@@ -811,87 +811,144 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
                     logged_in = False
 
             if logged_in:
-                # ── Call get_comics API directly with date range filter ──
-                # This is the same AJAX endpoint LoCG's UI calls when you apply the
-                # Release Date filter — much more reliable than interacting with the
-                # jQuery datepicker widget.
-                from urllib.parse import urlencode as _urlencode
-                params = {
-                    "addons": "1",
-                    "list": "creator",
-                    "list_mode": "issues",
-                    "list_mode_offset": "0",
-                    "view": "thumbs",
-                    "order": "date-desc",
-                    "date_type": "",
-                    "date": from_date_str,
-                    "date_end": to_date_str,
-                    "series_id": "0",
-                    "creators": creator_id,
-                    "character": "",
-                    "title": "",
-                    "starts_with": "",
-                }
-                query = _urlencode(params)
-                for r in ["16", "1", "2", "9", "8", "19", "3", "28", "26"]:
-                    query += f"&role%5B%5D={r}"
-                # No format filter — include single issues, omnibuses, etc. to match what LoCG shows
-                api_url = f"{BASE_URL}/comic/get_comics?{query}"
+                # ── Apply date filter through the UI, exactly as a user would ──
+                # 1. Open filter panel
+                await page.click(".show-filters")
+                await asyncio.sleep(1)
 
+                # 2. Expand the Release Date section
+                await page.click("text=RELEASE DATE")
+                await asyncio.sleep(1)
+
+                # 3. Type the from-date into the first datepicker input and press Tab.
+                #    We use .type() (simulated keypresses) so the datepicker widget's
+                #    keydown/input listeners fire and it registers the selected date.
+                from_input = page.locator('input[id^="dp"]').first
+                await from_input.click()
+                await page.keyboard.press("Control+a")
+                await from_input.type(from_date_str)
+                await page.keyboard.press("Tab")
+                await asyncio.sleep(0.5)
+
+                # 4. Type the to-date into the second datepicker input and press Tab
+                #    Pressing Tab triggers the datepicker onSelect, which fires the
+                #    page's own AJAX reload — no API call from us.
+                to_input = page.locator('input[id^="dp"]').nth(1)
+                await to_input.click()
+                await page.keyboard.press("Control+a")
+                await to_input.type(to_date_str)
+                await page.keyboard.press("Tab")
+
+                # Log the actual input values so we can verify the filter was applied
+                from_val = await from_input.get_attribute("value")
+                to_val = await to_input.get_attribute("value")
+                logger.info("Date filter inputs after fill: from=%r to=%r", from_val, to_val)
+
+                # 5. Wait for the page to reload its comic list
                 try:
-                    resp_text = await page.evaluate(
-                        f"async () => {{ const r = await fetch({json.dumps(api_url)}); return r.text(); }}"
+                    await page.wait_for_load_state("networkidle", timeout=15_000)
+                except Exception:
+                    await asyncio.sleep(5)
+
+                # 6. Close the filter panel
+                await page.click(".show-filters")
+                await asyncio.sleep(1)
+
+                # 7. Read only the li[data-comic] elements that are actually visible.
+                #    Comics with "+N" variant badges expand hidden sub-variant li elements
+                #    into the DOM. Those hidden elements have offsetHeight == 0, so we
+                #    exclude them here — keeping only what the user sees on screen.
+                raw_items = await page.evaluate("""
+                    () => Array.from(document.querySelectorAll('li[data-comic]'))
+                        .filter(li => li.offsetHeight > 0)
+                        .map(li => ({
+                            data_comic: li.dataset.comic,
+                            data_parent: li.dataset.parent || '0',
+                            href: (li.querySelector('a[href*="/comic/"]') || {}).href || '',
+                            text: li.innerText || ''
+                        }))
+                """)
+
+                logger.info("After date filter UI: %d items visible for %s", len(raw_items), profile_url)
+
+                # 8. One entry per LoCG list item (one per cover), deduped by data-comic.
+                #    This matches exactly what LoCG shows — if an artist has two covers
+                #    on the same issue (e.g. main cover + a variant), both rows appear.
+                #
+                #    Comics with many variants (e.g. Batman #163 "+15") expand ALL their
+                #    hidden sub-variants into the DOM as li[data-comic] elements even
+                #    though the page only shows the primary row.  Those hidden elements
+                #    have empty / whitespace-only innerText, so we skip them.
+                seen_variant_keys: set = set()
+                for item in raw_items:
+                    if not item.get("text", "").strip():
+                        continue  # hidden collapsed variant — not visible on the page
+                    href = item.get("href", "")
+                    m = re.search(r"/comic/(\d+)/([^?#]+)", href)
+                    if m:
+                        canonical_id = m.group(1)
+                        slug = m.group(2)
+                        issue_url = f"{BASE_URL}/comic/{canonical_id}/{slug}"
+                    else:
+                        parent = item.get("data_parent", "0")
+                        canonical_id = parent if parent != "0" else item.get("data_comic", "")
+                        issue_url = None
+
+                    if not canonical_id:
+                        continue
+
+                    cover_variant_id = item.get("data_comic", "")
+                    # Dedup key: the specific cover's data-comic (unique per variant).
+                    # For canonical items (dp=0) data-comic == canonical_id, so they
+                    # also get a unique key.
+                    dedup_key = cover_variant_id or canonical_id
+                    if dedup_key in seen_variant_keys:
+                        continue
+                    seen_variant_keys.add(dedup_key)
+
+                    # cover_variant_ids: the specific variant ID if this isn't the
+                    # canonical cover (dp != 0 or data-comic != canonical_id).
+                    variant_ids = (
+                        [cover_variant_id]
+                        if cover_variant_id and cover_variant_id != canonical_id
+                        else []
                     )
-                    api_data = json.loads(resp_text)
-                    list_html = api_data.get("list", "")
+
+                    issues.append({
+                        "locg_issue_id": canonical_id,
+                        "issue_url": issue_url,
+                        "cover_image_url": None,
+                        "title": "",
+                        "date_text": item.get("text", ""),
+                        "cover_variant_ids": variant_ids,
+                    })
+
+                logger.info("%d unique issues after dedup for %s", len(issues), profile_url)
+
+                # 9. Post-filter: drop anything clearly outside today→cutoff.
+                #    This guards against the date filter UI silently failing and
+                #    returning the artist's full back-catalog.
+                filtered: list[dict] = []
+                for issue in issues:
+                    text = issue.get("date_text", "")
+                    d = _parse_locg_date(text)
+                    if d is not None:
+                        # Parseable date — only keep if in window
+                        if today <= d <= cutoff:
+                            filtered.append(issue)
+                    else:
+                        # No parseable date — check if an obvious old year is present
+                        old_year = re.search(r'\b(19\d\d|200\d|201\d|2020|2021|2022|2023)\b', text)
+                        if not old_year:
+                            # No old year found — keep (could be upcoming without a date shown)
+                            filtered.append(issue)
+                        # else: text contains an old year → skip
+                if len(filtered) < len(issues):
                     logger.info(
-                        "get_comics API: count=%s for creator %s (%s→%s)",
-                        api_data.get("count", "?"), creator_id, from_date_str, to_date_str,
+                        "Post-filter removed %d out-of-window items (%d remain)",
+                        len(issues) - len(filtered), len(filtered),
                     )
-                except Exception as exc:
-                    logger.warning("get_comics API call failed: %s — falling back to HTML scrape", exc)
-                    list_html = ""
-
-                if list_html:
-                    # Parse li[data-comic] from the returned HTML fragment.
-                    # data-comic is the variant ID; canonical ID is always in the href
-                    # (e.g. href="/comic/8193797/absolute-wonder-woman-20?variant=8197001")
-                    seen_ids: set = set()
-                    for m in re.finditer(
-                        r'<li[^>]+data-comic="(\d+)"[^>]+data-parent="(\d+)"[^>]*>(.*?)</li>',
-                        list_html,
-                        re.DOTALL,
-                    ):
-                        variant_id, parent_id, inner = m.group(1), m.group(2), m.group(3)
-
-                        # Extract href — the numeric ID in the href path is the canonical issue ID
-                        href_m = re.search(r'href="(/comic/(\d+)/([^"?]+))', inner)
-                        if href_m:
-                            canonical_id = href_m.group(2)
-                            slug = href_m.group(3)
-                            issue_url = f"{BASE_URL}/comic/{canonical_id}/{slug}"
-                        else:
-                            # Fallback: use parent_id if non-zero, else variant_id
-                            canonical_id = parent_id if parent_id != "0" else variant_id
-                            issue_url = None
-
-                        if canonical_id in seen_ids:
-                            continue
-                        seen_ids.add(canonical_id)
-
-                        # Extract plain text (strips tags) for date parsing
-                        inner_text = re.sub(r"<[^>]+>", " ", inner)
-
-                        issues.append({
-                            "locg_issue_id": canonical_id,
-                            "issue_url": issue_url,
-                            "cover_image_url": None,  # lazy-loaded in HTML; series sync has real URLs
-                            "title": "",
-                            "date_text": inner_text,
-                        })
-
-                    logger.info("get_comics API: %d unique issues for creator %s", len(issues), creator_id)
-                    return issues
+                return filtered
 
             # ── Fallback: public profile page ──
             logger.info("Fetching artist profile page (public): %s", profile_url)
@@ -980,10 +1037,10 @@ async def get_issue_detail(issue_url: str) -> dict:
 
             logger.info("Fetching issue page: %s", issue_url)
             try:
-                await page.goto(issue_url, wait_until="networkidle", timeout=30_000)
+                await page.goto(issue_url, wait_until="networkidle", timeout=10_000)
             except Exception as exc:
                 logger.warning("networkidle timeout on issue page: %s", exc)
-                await page.goto(issue_url, wait_until="domcontentloaded", timeout=20_000)
+                await page.goto(issue_url, wait_until="domcontentloaded", timeout=15_000)
 
             await asyncio.sleep(NAV_DELAY)
 
