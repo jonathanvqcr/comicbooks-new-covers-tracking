@@ -1,1 +1,1 @@
-{"id": 115, "job_name": "sync_artists", "status": "success", "records_fetched": 43, "records_inserted": 0, "error_message": null, "error_detail": null, "started_at": "2026-04-12T04:18:06", "finished_at": "2026-04-12T04:21:11.456826"}
+{"id": 121, "job_name": "sync_artists", "status": "success", "records_fetched": 111, "records_inserted": 1, "error_message": null, "error_detail": null, "started_at": "2026-04-12T18:29:46", "finished_at": "2026-04-12T18:35:09.379340"}
