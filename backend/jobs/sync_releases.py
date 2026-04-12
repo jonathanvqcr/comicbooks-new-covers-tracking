@@ -546,8 +546,6 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
             if len(merged_artist_issues) != len(raw_artist_issues):
                 logger.info("    Merged to %d unique issues (was %d)", len(merged_artist_issues), len(raw_artist_issues))
 
-            _COLLECTED_KEYWORDS = (" TP", " HC", " Omnibus", " Vol.", " Complete ")
-
             for raw_issue in merged_artist_issues:
                 issue_url = raw_issue.get("issue_url")
                 if not issue_url:
@@ -558,13 +556,6 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
                 # If we already have this issue with covers, skip the expensive
                 # detail-page fetch entirely — just do the cover linking step.
                 existing = db.query(Issue).filter(Issue.locg_issue_id == locg_issue_id).first() if locg_issue_id else None
-
-                # Skip collected editions (TPs, HCs, Omnibus) — these appear on
-                # artist pages but are not single issues and should not be tracked.
-                _title_check = (existing.title if existing else "") or issue_url
-                if any(kw in _title_check for kw in _COLLECTED_KEYWORDS):
-                    logger.debug("    Skipping collected edition: %s", _title_check)
-                    continue
                 existing_covers = (
                     db.query(IssueCover).filter(IssueCover.issue_id == existing.id).all()
                     if existing else []
@@ -579,13 +570,17 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
                 if existing and (existing_covers or (existing.series and existing.series.is_followed)) and not missing_variants:
                     # Issue and all relevant covers already in DB — just do cover linking.
                     issue = existing
-                    # Backfill release_date from the scraper text if it's missing.
-                    if not issue.release_date and raw_issue.get("date_text"):
+                    # Backfill/update release_date from the scraper text.
+                    # If the issue is a reprint with a future date (e.g. 4th Printing),
+                    # the stored release_date may be the original's past date — update it
+                    # so artist alerts show the upcoming print date.
+                    if raw_issue.get("date_text"):
                         parsed = _parse_locg_text_date(raw_issue["date_text"])
-                        if parsed:
-                            issue.release_date = parsed
-                            db.commit()
-                            logger.info("    Backfilled release_date=%s for %s", parsed, issue.title)
+                        if parsed and (not issue.release_date or parsed > date.today()):
+                            if issue.release_date != parsed:
+                                issue.release_date = parsed
+                                db.commit()
+                                logger.info("    Updated release_date=%s for %s", parsed, issue.title)
                     has_canonical_cover: bool = raw_issue.get("has_canonical_cover", False)
 
                     # 1. If the artist page gave us specific variant IDs, use them.
