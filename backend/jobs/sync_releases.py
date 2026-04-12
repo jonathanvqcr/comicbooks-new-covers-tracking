@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from backend.config import load_watchlist
 from backend.database import SessionLocal
-from backend.locg.browser import get_series_issues, get_issue_detail, get_artist_upcoming_issues, search_series, search_upcoming_reprints
+from backend.locg.browser import get_series_issues, get_issue_detail, get_artist_upcoming_issues, search_series, search_upcoming_reprints, _parse_locg_date as _parse_locg_text_date
 from backend.locg.parsers import parse_series, parse_issue, parse_issue_covers, parse_issue_creators, parse_artist, _parse_date
 from backend.models import (
     Artist, CoverArtist, IssueCover, Issue, Notification, Series, SyncLog
@@ -516,7 +516,37 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
             logger.info("    Found %d issues on artist page", len(raw_artist_issues))
             totals["fetched"] += len(raw_artist_issues)
 
-            for raw_issue in raw_artist_issues:
+            # Group by locg_issue_id so that an issue with two artist variants
+            # (e.g. two store-exclusive covers on the same issue) is processed
+            # once with the full merged cover_variant_ids list. Without this,
+            # the stale-link cleanup after item N erases the link added by item N-1.
+            _grouped: dict[str, dict] = {}
+            _ungrouped: list[dict] = []
+            for _item in raw_artist_issues:
+                _iid = _item.get("locg_issue_id")
+                if not _iid:
+                    _ungrouped.append(_item)
+                    continue
+                if _iid not in _grouped:
+                    _grouped[_iid] = dict(_item)
+                    _grouped[_iid]["cover_variant_ids"] = list(_item.get("cover_variant_ids") or [])
+                    _grouped[_iid]["has_canonical_cover"] = not bool(_item.get("cover_variant_ids"))
+                else:
+                    seen = set(_grouped[_iid]["cover_variant_ids"])
+                    for _vid in _item.get("cover_variant_ids") or []:
+                        if _vid not in seen:
+                            _grouped[_iid]["cover_variant_ids"].append(_vid)
+                            seen.add(_vid)
+                    # If any item in the group had cover_variant_ids=[] it means
+                    # the artist drew the canonical cover of this issue — flag it so
+                    # Cover A gets linked alongside any specific variant IDs.
+                    if not bool(_item.get("cover_variant_ids")):
+                        _grouped[_iid]["has_canonical_cover"] = True
+            merged_artist_issues = list(_grouped.values()) + _ungrouped
+            if len(merged_artist_issues) != len(raw_artist_issues):
+                logger.info("    Merged to %d unique issues (was %d)", len(merged_artist_issues), len(raw_artist_issues))
+
+            for raw_issue in merged_artist_issues:
                 issue_url = raw_issue.get("issue_url")
                 if not issue_url:
                     continue
@@ -540,6 +570,15 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
                 if existing and (existing_covers or (existing.series and existing.series.is_followed)) and not missing_variants:
                     # Issue and all relevant covers already in DB — just do cover linking.
                     issue = existing
+                    # Backfill release_date from the scraper text if it's missing.
+                    if not issue.release_date and raw_issue.get("date_text"):
+                        parsed = _parse_locg_text_date(raw_issue["date_text"])
+                        if parsed:
+                            issue.release_date = parsed
+                            db.commit()
+                            logger.info("    Backfilled release_date=%s for %s", parsed, issue.title)
+                    has_canonical_cover: bool = raw_issue.get("has_canonical_cover", False)
+
                     # 1. If the artist page gave us specific variant IDs, use them.
                     #    cover_variant_ids=[] means the artist drew the canonical/primary
                     #    cover (dp=0 on LoCG) — go straight to Cover A, don't name-match
@@ -561,6 +600,61 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
                                     db.commit()
                                     logger.info("    Linked %s → %s (by variant id)", artist.name, cover.cover_label)
                                 linked_by_id = True
+                            else:
+                                logger.warning("    MISSING cover: variant_id=%s not in DB for %s (artist=%s)", variant_id, issue.title, artist.name)
+
+                        if linked_by_id:
+                            # Build the set of covers to keep: all specific variant IDs confirmed
+                            # above. If the artist also drew the canonical cover of this issue
+                            # (has_canonical_cover=True, e.g. Clayton Crain on X-Men Omnibus
+                            # regular + Adi Granov DM Edition), Cover A must be included too so
+                            # the cleanup below doesn't delete it.
+                            keep_cover_ids = set(
+                                row[0] for row in db.query(IssueCover.id).filter(
+                                    IssueCover.issue_id == issue.id,
+                                    IssueCover.locg_cover_id.in_(cover_variant_ids),
+                                ).all()
+                            )
+                            if has_canonical_cover:
+                                cover_a = db.query(IssueCover).filter(
+                                    IssueCover.issue_id == issue.id,
+                                    IssueCover.cover_label == "Cover A",
+                                ).first()
+                                if not cover_a:
+                                    cover_a = IssueCover(
+                                        issue_id=issue.id,
+                                        cover_label="Cover A",
+                                        cover_image_url=issue.cover_image_url,
+                                    )
+                                    db.add(cover_a)
+                                    db.flush()
+                                    db.commit()
+                                existing_link = db.query(CoverArtist).filter(
+                                    CoverArtist.issue_cover_id == cover_a.id,
+                                    CoverArtist.artist_id == artist.id,
+                                ).first()
+                                if not existing_link:
+                                    db.add(CoverArtist(issue_cover_id=cover_a.id, artist_id=artist.id))
+                                    db.commit()
+                                    logger.info("    Linked %s → Cover A for %s (canonical+variant)", artist.name, issue.title)
+                                keep_cover_ids.add(cover_a.id)
+
+                            # Remove all other links not in keep set (stale from old runs)
+                            stale_links = (
+                                db.query(CoverArtist)
+                                .join(IssueCover)
+                                .filter(
+                                    IssueCover.issue_id == issue.id,
+                                    CoverArtist.artist_id == artist.id,
+                                    CoverArtist.issue_cover_id.notin_(keep_cover_ids),
+                                )
+                                .all()
+                            )
+                            for stale in stale_links:
+                                db.delete(stale)
+                            if stale_links:
+                                db.commit()
+                                logger.info("    Removed %d stale cover link(s) for %s on %s", len(stale_links), artist.name, issue.title)
 
                         # 2. Variant IDs given but not in DB → name match as fallback
                         if not linked_by_id:
@@ -576,12 +670,11 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
                                         logger.info("    Linked %s → %s (by name)", artist.name, cover.cover_label)
                                     linked_by_id = True
 
-                    # 3. No specific variant (canonical cover) or still unlinked → Cover A
-                    already_linked = db.query(CoverArtist).join(IssueCover).filter(
-                        IssueCover.issue_id == issue.id,
-                        CoverArtist.artist_id == artist.id,
-                    ).first()
-                    if not already_linked:
+                    # 3. No specific variant found (canonical/primary cover) → Cover A only.
+                    # Only runs when cover_variant_ids=[] OR variant not found + name match failed.
+                    # Never runs when linked_by_id=True — even if has_canonical_cover, that case
+                    # is handled inside the variant block above to avoid deleting variant links.
+                    if not linked_by_id:
                         cover_a = db.query(IssueCover).filter(
                             IssueCover.issue_id == issue.id,
                             IssueCover.cover_label == "Cover A",
@@ -595,9 +688,30 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
                             db.add(cover_a)
                             db.flush()
                             db.commit()
-                        db.add(CoverArtist(issue_cover_id=cover_a.id, artist_id=artist.id))
-                        db.commit()
-                        logger.info("    Linked %s → Cover A for %s (fallback)", artist.name, issue.title)
+                        existing_link = db.query(CoverArtist).filter(
+                            CoverArtist.issue_cover_id == cover_a.id,
+                            CoverArtist.artist_id == artist.id,
+                        ).first()
+                        if not existing_link:
+                            db.add(CoverArtist(issue_cover_id=cover_a.id, artist_id=artist.id))
+                            db.commit()
+                            logger.info("    Linked %s → Cover A for %s (canonical)", artist.name, issue.title)
+                        # Remove all other links for this artist on this issue (stale variants)
+                        stale_links = (
+                            db.query(CoverArtist)
+                            .join(IssueCover)
+                            .filter(
+                                IssueCover.issue_id == issue.id,
+                                CoverArtist.artist_id == artist.id,
+                                CoverArtist.issue_cover_id != cover_a.id,
+                            )
+                            .all()
+                        )
+                        for stale in stale_links:
+                            db.delete(stale)
+                        if stale_links:
+                            db.commit()
+                            logger.info("    Removed %d stale variant link(s) for %s on %s", len(stale_links), artist.name, issue.title)
                     continue
 
                 # Fetch full detail to get series info, FOC date, and cover variants
@@ -630,6 +744,11 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
                 series = None
                 if locg_series_id:
                     series = db.query(Series).filter(Series.locg_series_id == locg_series_id).first()
+                    if series and series_name and not series.is_followed and series.name != series_name:
+                        # Correct a stale series name (e.g. created under a wrong name earlier)
+                        logger.info("    Correcting series name %r → %r", series.name, series_name)
+                        series.name = series_name
+                        db.commit()
                 if not series and series_name:
                     series = db.query(Series).filter(Series.name == series_name).first()
                 if not series:
@@ -663,7 +782,7 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
                 rel = _parse_date(raw_detail.get("release_date_raw"))
                 # Fallback: parse release date from the li text returned by get_comics API
                 if not rel and raw_issue.get("date_text"):
-                    rel = _parse_date(raw_issue["date_text"])
+                    rel = _parse_locg_text_date(raw_issue["date_text"])
                 if rel and not issue.release_date:
                     issue.release_date = rel
                     db.commit()
@@ -679,6 +798,7 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
                 # cover_variant_ids=[] means the artist drew the canonical/primary cover
                 # (dp=0 on LoCG) — go straight to Cover A, do not name-match every
                 # store-exclusive that mentions their name.
+                has_canonical_cover: bool = raw_issue.get("has_canonical_cover", False)
                 linked_by_id = False
                 if cover_variant_ids:
                     # 1. Exact match by variant ID
@@ -697,6 +817,59 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
                                 db.commit()
                                 logger.info("    Linked %s → %s (by variant id)", artist.name, cover.cover_label)
                             linked_by_id = True
+                        else:
+                            logger.warning("    MISSING cover: variant_id=%s not in DB for %s (artist=%s)", variant_id, issue.title, artist.name)
+
+                    if linked_by_id:
+                        # Build keep set: all confirmed specific variant IDs. If the artist
+                        # also drew the canonical cover (has_canonical_cover=True), include
+                        # Cover A so the cleanup below doesn't delete it.
+                        keep_cover_ids = set(
+                            row[0] for row in db.query(IssueCover.id).filter(
+                                IssueCover.issue_id == issue.id,
+                                IssueCover.locg_cover_id.in_(cover_variant_ids),
+                            ).all()
+                        )
+                        if has_canonical_cover:
+                            cover_a = db.query(IssueCover).filter(
+                                IssueCover.issue_id == issue.id,
+                                IssueCover.cover_label == "Cover A",
+                            ).first()
+                            if not cover_a:
+                                cover_a = IssueCover(
+                                    issue_id=issue.id,
+                                    cover_label="Cover A",
+                                    cover_image_url=issue.cover_image_url,
+                                )
+                                db.add(cover_a)
+                                db.flush()
+                                db.commit()
+                            existing_link = db.query(CoverArtist).filter(
+                                CoverArtist.issue_cover_id == cover_a.id,
+                                CoverArtist.artist_id == artist.id,
+                            ).first()
+                            if not existing_link:
+                                db.add(CoverArtist(issue_cover_id=cover_a.id, artist_id=artist.id))
+                                db.commit()
+                                logger.info("    Linked %s → Cover A for %s (canonical+variant)", artist.name, issue.title)
+                            keep_cover_ids.add(cover_a.id)
+
+                        stale_links = (
+                            db.query(CoverArtist)
+                            .join(IssueCover)
+                            .filter(
+                                IssueCover.issue_id == issue.id,
+                                CoverArtist.artist_id == artist.id,
+                                CoverArtist.issue_cover_id.notin_(keep_cover_ids),
+                            )
+                            .all()
+                        )
+                        for stale in stale_links:
+                            db.delete(stale)
+                        if stale_links:
+                            db.commit()
+                            logger.info("    Removed %d stale cover link(s) for %s on %s", len(stale_links), artist.name, issue.title)
+
                     # 2. Variant ID not in DB yet → name match fallback
                     if not linked_by_id:
                         for cover in db.query(IssueCover).filter(IssueCover.issue_id == issue.id).all():
@@ -711,14 +884,11 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
                                     logger.info("    Linked %s → %s (by name)", artist.name, cover.cover_label)
                                 linked_by_id = True
 
-                # If the artist still has no cover link on this issue, they are the Cover A
-                # (primary) artist — LoCG doesn't list Cover A in the variant section.
-                # Create a Cover A entry using the issue's main cover image and link them.
-                already_linked = db.query(CoverArtist).join(IssueCover).filter(
-                    IssueCover.issue_id == issue.id,
-                    CoverArtist.artist_id == artist.id,
-                ).first()
-                if not already_linked:
+                # If the artist still has no specific variant link, they are the Cover A
+                # (canonical) artist. Link to Cover A only and remove any stale variant links.
+                # Never runs when linked_by_id=True — the has_canonical_cover case is handled
+                # inside the variant block above to avoid deleting variant links here.
+                if not linked_by_id:
                     cover_a = db.query(IssueCover).filter(
                         IssueCover.issue_id == issue.id,
                         IssueCover.cover_label == "Cover A",
@@ -732,9 +902,30 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
                         db.add(cover_a)
                         db.flush()
                         db.commit()
-                    db.add(CoverArtist(issue_cover_id=cover_a.id, artist_id=artist.id))
-                    db.commit()
-                    logger.info("    Linked %s → Cover A for %s #%s", artist.name, series_name, issue.issue_number)
+                    existing_link = db.query(CoverArtist).filter(
+                        CoverArtist.issue_cover_id == cover_a.id,
+                        CoverArtist.artist_id == artist.id,
+                    ).first()
+                    if not existing_link:
+                        db.add(CoverArtist(issue_cover_id=cover_a.id, artist_id=artist.id))
+                        db.commit()
+                        logger.info("    Linked %s → Cover A for %s #%s (canonical)", artist.name, series_name, issue.issue_number)
+                    # Remove all other links for this artist on this issue
+                    stale_links = (
+                        db.query(CoverArtist)
+                        .join(IssueCover)
+                        .filter(
+                            IssueCover.issue_id == issue.id,
+                            CoverArtist.artist_id == artist.id,
+                            CoverArtist.issue_cover_id != cover_a.id,
+                        )
+                        .all()
+                    )
+                    for stale in stale_links:
+                        db.delete(stale)
+                    if stale_links:
+                        db.commit()
+                        logger.info("    Removed %d stale variant link(s) for %s on %s #%s", len(stale_links), artist.name, series_name, issue.issue_number)
 
         except Exception as artist_exc:
             msg = f"Artist profile sync '{artist.name}': {artist_exc}"

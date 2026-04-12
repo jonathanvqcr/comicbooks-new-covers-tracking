@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 from datetime import date, timedelta
+from dateutil.relativedelta import relativedelta
 from typing import List
 
 from backend.database import get_db
@@ -67,7 +68,7 @@ def get_tracked_artists(db: Session = Depends(get_db)):
 
 @router.get("/issues/upcoming", response_model=List[IssueRead])
 def get_upcoming_issues(db: Session = Depends(get_db)):
-    cutoff = date.today() + timedelta(weeks=12)
+    cutoff = date.today() + relativedelta(months=3)
     today = date.today()
 
     # Issues from followed (watchlist) series
@@ -118,7 +119,7 @@ def get_artist_alerts(db: Session = Depends(get_db)):
     retailer exclusives that ship weeks after the main issue release date
     are still visible.
     """
-    cutoff = date.today() + timedelta(weeks=12)
+    cutoff = date.today() + timedelta(weeks=8)
     lookback = date.today() - timedelta(weeks=6)
 
     issues = (
@@ -142,7 +143,7 @@ def get_artist_alerts(db: Session = Depends(get_db)):
 
 @router.get("/issues/foc-export", response_model=List[FocExportRow])
 def get_foc_export(db: Session = Depends(get_db)):
-    cutoff = date.today() + timedelta(weeks=12)
+    cutoff = date.today() + relativedelta(months=3)
     issues = (
         db.query(Issue)
         .join(Issue.series)

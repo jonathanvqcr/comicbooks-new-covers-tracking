@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, timedelta
+from dateutil.relativedelta import relativedelta
 
 from sqlalchemy.orm import Session
 
@@ -35,7 +36,7 @@ def run_artist_alerts(db: Session | None = None) -> int:
 
     try:
         today = date.today()
-        lookahead = today + timedelta(weeks=8)
+        lookahead = today + relativedelta(months=3)
         count = 0
 
         # Find all tracked artists
@@ -44,8 +45,10 @@ def run_artist_alerts(db: Session | None = None) -> int:
             return 0
 
         for artist in tracked_artists:
-            # Find covers by this artist on upcoming issues via explicit CoverArtist links
-            linked_covers = (
+            # Find covers by this artist on upcoming issues via explicit CoverArtist links.
+            # These links are authoritative — set by the artist page scraper which knows
+            # exactly which cover variant LoCG attributes to each artist.
+            covers = (
                 db.query(IssueCover)
                 .join(CoverArtist, CoverArtist.issue_cover_id == IssueCover.id)
                 .join(Issue, Issue.id == IssueCover.issue_id)
@@ -56,40 +59,6 @@ def run_artist_alerts(db: Session | None = None) -> int:
                 )
                 .all()
             )
-
-            # Also scan cover labels directly — catches covers synced before this artist was tracked
-            label_covers = (
-                db.query(IssueCover)
-                .join(Issue, Issue.id == IssueCover.issue_id)
-                .filter(
-                    IssueCover.cover_label.ilike(f"%{artist.name}%"),
-                    Issue.release_date >= today,
-                    Issue.release_date <= lookahead,
-                )
-                .all()
-            )
-
-            # Backfill CoverArtist links for any label matches that aren't linked yet
-            linked_ids = {c.id for c in linked_covers}
-            for cover in label_covers:
-                if cover.id not in linked_ids:
-                    existing_link = db.query(CoverArtist).filter(
-                        CoverArtist.issue_cover_id == cover.id,
-                        CoverArtist.artist_id == artist.id,
-                    ).first()
-                    if not existing_link:
-                        db.add(CoverArtist(issue_cover_id=cover.id, artist_id=artist.id))
-                        logger.info("Backfilled CoverArtist link: %s → %s", artist.name, cover.cover_label)
-
-            db.commit()
-
-            # Combine both sources, deduplicate by cover id
-            seen_ids: set[int] = set()
-            covers: list[IssueCover] = []
-            for c in linked_covers + label_covers:
-                if c.id not in seen_ids:
-                    seen_ids.add(c.id)
-                    covers.append(c)
 
             for cover in covers:
                 issue = cover.issue

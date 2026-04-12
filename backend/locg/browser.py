@@ -21,6 +21,7 @@ import os
 import re
 import logging
 from datetime import date, timedelta
+from dateutil.relativedelta import relativedelta
 from typing import Optional
 from urllib.parse import urljoin, urlparse, urlencode, quote_plus
 
@@ -385,17 +386,26 @@ async def _scrape_issue_detail_from_html(page: Page) -> dict:
             }
 
             // --- Series info ---
-            // Skip "Submit New Variant Cover" / submit-new-issue links that appear before the real series link.
-            // A valid series link points to /comics/series/{id}/{slug} with no query params.
-            let seriesLink = null;
+            // Collect all valid series links (skip submit/admin links and bare labels).
+            // Then pick the one whose text best matches full_title — this avoids picking up
+            // navigation/breadcrumb links that reference a parent series (e.g. "Superman" on
+            // a Zatanna issue page) instead of the actual series the issue belongs to.
+            const seriesCandidates = [];
             document.querySelectorAll('a[href*="/comics/series/"]').forEach(a => {
-                if (seriesLink) return;
                 const href = a.href;
                 if (href.includes('submit-new-issue') || href.includes('?') || href.includes('/submit')) return;
-                const txt = a.textContent.trim();
+                const txt = a.textContent.trim().replace(/\s*\(\d{4}[^)]*\)\s*$/, '').trim();
                 if (!txt || txt.toLowerCase() === 'series' || txt.toLowerCase() === 'add') return;
-                seriesLink = a;
+                seriesCandidates.push({ el: a, txt });
             });
+            let seriesLink = null;
+            if (seriesCandidates.length > 0) {
+                // Prefer the candidate whose text is a case-insensitive prefix of full_title.
+                // E.g. full_title="Zatanna #1" → prefer candidate with text "Zatanna".
+                const titleLower = (result.full_title || '').toLowerCase();
+                seriesLink = seriesCandidates.find(c => titleLower.startsWith(c.txt.toLowerCase()))?.el
+                    || seriesCandidates[0].el;
+            }
             if (seriesLink) {
                 // Strip trailing year range like " (2025 - Present)" from series name
                 result.series_name = seriesLink.textContent.trim().replace(/\s*\(\d{4}[^)]*\)\s*$/, '').trim();
@@ -783,7 +793,7 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
 
     profile_url = _normalize_profile_url(artist_url)
     today = date.today()
-    cutoff = today + timedelta(weeks=12)
+    cutoff = today + timedelta(weeks=8)
     from_date_str = today.strftime("%m/%d/%Y")
     to_date_str = cutoff.strftime("%m/%d/%Y")
 
@@ -811,7 +821,19 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
                     logged_in = False
 
             if logged_in:
-                # ── Apply date filter through the UI, exactly as a user would ──
+                # ── Switch to Issues view ──
+                # LoCG's /comics page defaults to "Titles" view which collapses variant
+                # covers under the primary, hiding them in the DOM (height=0). "Issues"
+                # view shows every individual cover as a separate visible item, matching
+                # what the user sees when they manually select the Issues tab.
+                try:
+                    await page.click("text=Issues", timeout=5_000)
+                    await asyncio.sleep(1)
+                    logger.info("Switched to Issues view")
+                except Exception:
+                    logger.warning("Could not click Issues tab — proceeding in default view")
+
+                # ── Apply date filter via jQuery datepicker API ──
                 # 1. Open filter panel
                 await page.click(".show-filters")
                 await asyncio.sleep(1)
@@ -820,47 +842,112 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
                 await page.click("text=RELEASE DATE")
                 await asyncio.sleep(1)
 
-                # 3. Type the from-date into the first datepicker input and press Tab.
-                #    We use .type() (simulated keypresses) so the datepicker widget's
-                #    keydown/input listeners fire and it registers the selected date.
-                from_input = page.locator('input[id^="dp"]').first
-                await from_input.click()
-                await page.keyboard.press("Control+a")
-                await from_input.type(from_date_str)
-                await page.keyboard.press("Tab")
-                await asyncio.sleep(0.5)
+                # 3. Set BOTH date inputs first, then fire onSelect once.
+                #    LoCG's onSelect handler reads both input values when building
+                #    the AJAX request. If we fire from-date's onSelect before setting
+                #    the to-date, date_end comes through empty. Setting both first
+                #    ensures one AJAX call with date=today&date_end=+12weeks.
+                await page.evaluate("""
+                    ([fromStr, toStr]) => {
+                        const inputs = document.querySelectorAll('input[id^="dp"]');
+                        if (inputs.length < 2) return;
+                        // Set both values (no AJAX yet)
+                        $(inputs[0]).datepicker('setDate', new Date(fromStr));
+                        $(inputs[1]).datepicker('setDate', new Date(toStr));
+                        // Now fire the from-date onSelect — LoCG reads both inputs
+                        // when constructing the AJAX request, so date_end will be set
+                        const onSelect = $(inputs[0]).datepicker('option', 'onSelect');
+                        if (typeof onSelect === 'function') {
+                            onSelect.call(inputs[0], $(inputs[0]).val(), $(inputs[0]).data('datepicker'));
+                        }
+                    }
+                """, [from_date_str, to_date_str])
 
-                # 4. Type the to-date into the second datepicker input and press Tab
-                #    Pressing Tab triggers the datepicker onSelect, which fires the
-                #    page's own AJAX reload — no API call from us.
-                to_input = page.locator('input[id^="dp"]').nth(1)
-                await to_input.click()
-                await page.keyboard.press("Control+a")
-                await to_input.type(to_date_str)
-                await page.keyboard.press("Tab")
-
-                # Log the actual input values so we can verify the filter was applied
-                from_val = await from_input.get_attribute("value")
-                to_val = await to_input.get_attribute("value")
-                logger.info("Date filter inputs after fill: from=%r to=%r", from_val, to_val)
-
-                # 5. Wait for the page to reload its comic list
+                # Wait for AJAX results to load
                 try:
                     await page.wait_for_load_state("networkidle", timeout=15_000)
                 except Exception:
                     await asyncio.sleep(5)
 
-                # 6. Close the filter panel
+                # Log input values to confirm filter applied
+                from_val, to_val = await page.evaluate("""
+                    () => {
+                        const inputs = document.querySelectorAll('input[id^="dp"]');
+                        return [inputs[0]?.value || '', inputs[1]?.value || ''];
+                    }
+                """)
+                logger.info("Date filter inputs: from=%r to=%r", from_val, to_val)
+
+                # 5. Close the filter panel
                 await page.click(".show-filters")
                 await asyncio.sleep(1)
 
-                # 7. Read only the li[data-comic] elements that are actually visible.
-                #    Comics with "+N" variant badges expand hidden sub-variant li elements
-                #    into the DOM. Those hidden elements have offsetHeight == 0, so we
-                #    exclude them here — keeping only what the user sees on screen.
+                # 6. Scroll to load all items. LoCG lazy-renders as the user scrolls.
+                #    We scroll both the window AND the comic list's own scroll container
+                #    (if it has one), and stop when the item count stabilises.
+                prev_count = -1
+                stable_rounds = 0
+                for _scroll_attempt in range(20):  # hard cap
+                    await page.evaluate("""
+                        () => {
+                            window.scrollTo(0, document.body.scrollHeight);
+                            // Also scroll any overflow container wrapping the comic list
+                            const list = (
+                                document.querySelector('#comic-list-issues') ||
+                                document.querySelector('.comic-list') ||
+                                document.querySelector('[id*="comic-list"]')
+                            );
+                            if (list) {
+                                let el = list.parentElement;
+                                while (el && el !== document.body) {
+                                    const ov = window.getComputedStyle(el).overflowY;
+                                    if (['scroll', 'auto', 'overlay'].includes(ov)) {
+                                        el.scrollTop = el.scrollHeight;
+                                        break;
+                                    }
+                                    el = el.parentElement;
+                                }
+                            }
+                        }
+                    """)
+                    await asyncio.sleep(2)
+                    cur_count = await page.evaluate(
+                        "() => document.querySelectorAll('li[data-comic]').length"
+                    )
+                    if cur_count == prev_count:
+                        stable_rounds += 1
+                        if stable_rounds >= 2:
+                            break
+                    else:
+                        stable_rounds = 0
+                    prev_count = cur_count
+                logger.info(
+                    "Scroll complete (%d attempts): %d li[data-comic] in DOM",
+                    _scroll_attempt + 1, prev_count
+                )
+
+                # 6b. Click every "a.variant-toggle" to reveal collapsed variant rows.
+                #     LoCG collapses sub-variants under a "+N" toggle link (display:none).
+                #     Clicking each one makes the hidden li[data-comic] children visible.
+                expanded = await page.evaluate("""
+                    () => {
+                        const toggles = Array.from(document.querySelectorAll('a.variant-toggle'));
+                        toggles.forEach(a => a.click());
+                        return toggles.length;
+                    }
+                """)
+                if expanded > 0:
+                    logger.info("Clicked %d '+N' expanders — waiting for expansion", expanded)
+                    await asyncio.sleep(2)
+
+                # 7. Read the DOM — all visible (display != none) top-level li[data-comic].
+                #    After expanding the "+N" rows above, all variant items are visible.
+                #    Filter: not nested inside another li[data-comic] (excludes any
+                #    remaining hidden sub-items) AND display != none.
                 raw_items = await page.evaluate("""
                     () => Array.from(document.querySelectorAll('li[data-comic]'))
-                        .filter(li => li.offsetHeight > 0)
+                        .filter(li => !li.parentElement || !li.parentElement.closest('li[data-comic]'))
+                        .filter(li => window.getComputedStyle(li).display !== 'none')
                         .map(li => ({
                             data_comic: li.dataset.comic,
                             data_parent: li.dataset.parent || '0',
@@ -868,8 +955,10 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
                             text: li.innerText || ''
                         }))
                 """)
-
-                logger.info("After date filter UI: %d items visible for %s", len(raw_items), profile_url)
+                logger.info(
+                    "After date filter UI: %d top-level items from DOM for %s",
+                    len(raw_items), profile_url
+                )
 
                 # 8. One entry per LoCG list item (one per cover), deduped by data-comic.
                 #    This matches exactly what LoCG shows — if an artist has two covers
@@ -914,13 +1003,23 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
                         else []
                     )
 
+                    # Detect "+N" expansion-parent rows: LoCG shows these as the
+                    # collapsed parent when an issue has multiple variants. They have
+                    # cover_variant_ids=[] (canonical) but the artist may NOT have
+                    # drawn Cover A — they just happen to have other variants on the issue.
+                    text_stripped = item.get("text", "").strip()
+                    is_expansion_parent = bool(
+                        re.match(r'^\+\d', text_stripped) and not variant_ids
+                    )
+
                     issues.append({
                         "locg_issue_id": canonical_id,
                         "issue_url": issue_url,
                         "cover_image_url": None,
                         "title": "",
-                        "date_text": item.get("text", ""),
+                        "date_text": text_stripped,
                         "cover_variant_ids": variant_ids,
+                        "is_expansion_parent": is_expansion_parent,
                     })
 
                 logger.info("%d unique issues after dedup for %s", len(issues), profile_url)
@@ -933,7 +1032,7 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
                     text = issue.get("date_text", "")
                     d = _parse_locg_date(text)
                     if d is not None:
-                        # Parseable date — only keep if in window
+                        # Parseable date — only keep if in window (today → +12 weeks)
                         if today <= d <= cutoff:
                             filtered.append(issue)
                     else:

@@ -37,7 +37,7 @@ def _fmt(d: date | None) -> str:
 
 def _build_foc_rows(db: Session) -> list[dict]:
     today = date.today()
-    cutoff = today + timedelta(weeks=8)
+    cutoff = today + relativedelta(months=3)
 
     issues = (
         db.query(Issue)
@@ -117,7 +117,7 @@ def generate_weekly_report(db: Session, send_email_enabled: bool = False) -> str
     Returns the absolute path to the generated PDF.
     """
     today = date.today()
-    period_end = today + timedelta(weeks=8)
+    period_end = today + relativedelta(months=3)
 
     foc_rows = _build_foc_rows(db)
     all_notifications = _build_notification_rows(db)

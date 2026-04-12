@@ -14,6 +14,7 @@ import json
 import os
 import sys
 from datetime import date, timedelta, datetime
+from dateutil.relativedelta import relativedelta
 
 # Run from project root: backend/.venv/bin/python3 backend/scripts/export_static.py
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -94,7 +95,7 @@ def export_tracked_artists(db) -> None:
 def export_artist_alerts(db) -> None:
     """Issues with tracked artist covers — includes 6-week lookback for retailer exclusives."""
     from sqlalchemy import and_
-    cutoff = date.today() + timedelta(weeks=12)
+    cutoff = date.today() + relativedelta(months=3)
     lookback = date.today() - timedelta(weeks=6)
 
     issues = (
@@ -119,7 +120,7 @@ def export_artist_alerts(db) -> None:
 
 
 def export_upcoming_issues(db) -> None:
-    cutoff = date.today() + timedelta(weeks=12)
+    cutoff = date.today() + relativedelta(months=3)
     today = date.today()
 
     # Issues from followed (watchlist) series
@@ -166,7 +167,7 @@ def export_upcoming_issues(db) -> None:
 
 
 def export_foc(db) -> None:
-    cutoff = date.today() + timedelta(weeks=12)
+    cutoff = date.today() + relativedelta(months=3)
     issues = (
         db.query(Issue)
         .join(Issue.series)
