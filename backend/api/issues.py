@@ -119,7 +119,7 @@ def get_artist_alerts(db: Session = Depends(get_db)):
     retailer exclusives that ship weeks after the main issue release date
     are still visible.
     """
-    cutoff = date.today() + timedelta(weeks=8)
+    cutoff = date.today() + relativedelta(months=3)
     lookback = date.today() - timedelta(weeks=6)
 
     issues = (
