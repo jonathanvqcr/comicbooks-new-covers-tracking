@@ -546,6 +546,8 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
             if len(merged_artist_issues) != len(raw_artist_issues):
                 logger.info("    Merged to %d unique issues (was %d)", len(merged_artist_issues), len(raw_artist_issues))
 
+            _COLLECTED_KEYWORDS = (" TP", " HC", " Omnibus", " Vol.", " Complete ")
+
             for raw_issue in merged_artist_issues:
                 issue_url = raw_issue.get("issue_url")
                 if not issue_url:
@@ -556,6 +558,13 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
                 # If we already have this issue with covers, skip the expensive
                 # detail-page fetch entirely — just do the cover linking step.
                 existing = db.query(Issue).filter(Issue.locg_issue_id == locg_issue_id).first() if locg_issue_id else None
+
+                # Skip collected editions (TPs, HCs, Omnibus) — these appear on
+                # artist pages but are not single issues and should not be tracked.
+                _title_check = (existing.title if existing else "") or issue_url
+                if any(kw in _title_check for kw in _COLLECTED_KEYWORDS):
+                    logger.debug("    Skipping collected edition: %s", _title_check)
+                    continue
                 existing_covers = (
                     db.query(IssueCover).filter(IssueCover.issue_id == existing.id).all()
                     if existing else []
@@ -926,6 +935,34 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
                     if stale_links:
                         db.commit()
                         logger.info("    Removed %d stale variant link(s) for %s on %s #%s", len(stale_links), artist.name, series_name, issue.issue_number)
+
+            # ── Per-artist stale cleanup ──
+            # Remove links for future-dated issues that LoCG no longer returns for
+            # this artist (e.g. TPs, Omnibus, or covers removed from their page).
+            scraped_locg_ids = set(_grouped.keys()) | {
+                i.get("locg_issue_id") for i in _ungrouped if i.get("locg_issue_id")
+            }
+            today_date = date.today()
+            future_links = (
+                db.query(CoverArtist)
+                .join(IssueCover, IssueCover.id == CoverArtist.issue_cover_id)
+                .join(Issue, Issue.id == IssueCover.issue_id)
+                .filter(
+                    CoverArtist.artist_id == artist.id,
+                    Issue.release_date >= today_date,
+                )
+                .all()
+            )
+            removed_stale = 0
+            for link in future_links:
+                ic = db.query(IssueCover).filter(IssueCover.id == link.issue_cover_id).first()
+                issue = db.query(Issue).filter(Issue.id == ic.issue_id).first() if ic else None
+                if issue and issue.locg_issue_id not in scraped_locg_ids:
+                    db.delete(link)
+                    removed_stale += 1
+            if removed_stale:
+                db.commit()
+                logger.info("    Removed %d stale artist link(s) for %s (not in current LoCG page)", removed_stale, artist.name)
 
         except Exception as artist_exc:
             msg = f"Artist profile sync '{artist.name}': {artist_exc}"

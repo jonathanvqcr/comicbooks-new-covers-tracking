@@ -926,21 +926,9 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
                     _scroll_attempt + 1, prev_count
                 )
 
-                # 6b. Click every "a.variant-toggle" to reveal collapsed variant rows.
-                #     LoCG collapses sub-variants under a "+N" toggle link (display:none).
-                #     Clicking each one makes the hidden li[data-comic] children visible.
-                expanded = await page.evaluate("""
-                    () => {
-                        const toggles = Array.from(document.querySelectorAll('a.variant-toggle'));
-                        toggles.forEach(a => a.click());
-                        return toggles.length;
-                    }
-                """)
-                if expanded > 0:
-                    logger.info("Clicked %d '+N' expanders — waiting for expansion", expanded)
-                    await asyncio.sleep(2)
-
                 # 7. Read the DOM — all visible (display != none) top-level li[data-comic].
+                #    Do NOT click "+N" variant-toggle buttons — collapsed sub-variants
+                #    count as one row (the parent), exactly matching what the user sees.
                 #    After expanding the "+N" rows above, all variant items are visible.
                 #    Filter: not nested inside another li[data-comic] (excludes any
                 #    remaining hidden sub-items) AND display != none.
