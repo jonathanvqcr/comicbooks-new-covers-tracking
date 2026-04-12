@@ -833,7 +833,7 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
                 except Exception:
                     logger.warning("Could not click Issues tab — proceeding in default view")
 
-                # ── Apply date filter via jQuery datepicker API ──
+                # ── Apply date filter by typing like a real user ──
                 # 1. Open filter panel
                 await page.click(".show-filters")
                 await asyncio.sleep(1)
@@ -842,34 +842,26 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
                 await page.click("text=RELEASE DATE")
                 await asyncio.sleep(1)
 
-                # 3. Set BOTH date inputs first, then fire onSelect once.
-                #    LoCG's onSelect handler reads both input values when building
-                #    the AJAX request. If we fire from-date's onSelect before setting
-                #    the to-date, date_end comes through empty. Setting both first
-                #    ensures one AJAX call with date=today&date_end=+12weeks.
-                await page.evaluate("""
-                    ([fromStr, toStr]) => {
-                        const inputs = document.querySelectorAll('input[id^="dp"]');
-                        if (inputs.length < 2) return;
-                        // Set both values (no AJAX yet)
-                        $(inputs[0]).datepicker('setDate', new Date(fromStr));
-                        $(inputs[1]).datepicker('setDate', new Date(toStr));
-                        // Now fire the from-date onSelect — LoCG reads both inputs
-                        // when constructing the AJAX request, so date_end will be set
-                        const onSelect = $(inputs[0]).datepicker('option', 'onSelect');
-                        if (typeof onSelect === 'function') {
-                            onSelect.call(inputs[0], $(inputs[0]).val(), $(inputs[0]).data('datepicker'));
-                        }
-                    }
-                """, [from_date_str, to_date_str])
+                # 3. Type into the date inputs directly
+                date_inputs = await page.query_selector_all('input[id^="dp"]')
+                if len(date_inputs) >= 2:
+                    # Click first input, type date, then Tab to close calendar and
+                    # move focus to the second input
+                    await date_inputs[0].click(click_count=3)
+                    await date_inputs[0].type(from_date_str)
+                    await date_inputs[0].press("Tab")
+                    await asyncio.sleep(0.5)
+                    # Second input now has focus — type to-date and press Enter
+                    await date_inputs[1].type(to_date_str)
+                    await asyncio.sleep(0.5)
+                    await date_inputs[1].press("Enter")
 
-                # Wait for AJAX results to load
+                # Wait for results to update
                 try:
                     await page.wait_for_load_state("networkidle", timeout=15_000)
                 except Exception:
                     await asyncio.sleep(5)
 
-                # Log input values to confirm filter applied
                 from_val, to_val = await page.evaluate("""
                     () => {
                         const inputs = document.querySelectorAll('input[id^="dp"]');
