@@ -793,7 +793,7 @@ async def get_artist_upcoming_issues(artist_url: str) -> list[dict]:
 
     profile_url = _normalize_profile_url(artist_url)
     today = date.today()
-    cutoff = today + timedelta(weeks=8)
+    cutoff = today + relativedelta(months=3)
     from_date_str = today.strftime("%m/%d/%Y")
     to_date_str = cutoff.strftime("%m/%d/%Y")
 
