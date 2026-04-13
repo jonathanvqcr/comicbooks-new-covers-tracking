@@ -66,11 +66,12 @@ def _upsert_series(db: Session, series_config: dict) -> Series:
         db.add(row)
         db.flush()
     else:
-        # Update URL and priority if they've changed
+        # Update URL, priority, and followed status if they've changed
         if url and row.locg_url != url:
             row.locg_url = url
         if row.priority != priority:
             row.priority = priority
+        row.is_followed = True
 
     db.commit()
     return row
