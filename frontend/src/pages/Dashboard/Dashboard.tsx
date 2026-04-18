@@ -24,6 +24,12 @@ function FocBadge({ date }: { date: string | null }) {
   )
 }
 
+function CoverThumb({ url, label, imgClass, placeholderClass }: { url: string | null; label: string; imgClass?: string; placeholderClass?: string }) {
+  const [failed, setFailed] = React.useState(false)
+  if (!url || failed) return <div className={placeholderClass ?? styles.coverStripPlaceholder} />
+  return <img src={url} alt="" className={imgClass ?? styles.coverStripThumb} onError={() => setFailed(true)} />
+}
+
 function CoverStrip({ variants }: { variants: FocExportRow['cover_variants'] }) {
   if (!variants.length) return <span className={styles.dash}>—</span>
   return (
@@ -31,9 +37,7 @@ function CoverStrip({ variants }: { variants: FocExportRow['cover_variants'] }) 
       {variants.map((cv, j) => {
         const inner = (
           <div className={styles.coverStripItem}>
-            {cv.cover_image_url
-              ? <img src={cv.cover_image_url} alt={cv.label} className={styles.coverStripThumb} />
-              : <div className={styles.coverStripPlaceholder} />}
+            <CoverThumb url={cv.cover_image_url} label={cv.label} />
             <span className={styles.coverStripLabel}>{cv.label}</span>
           </div>
         )
@@ -397,7 +401,7 @@ export default function Dashboard() {
                                 {artistCovers.map(c => {
                                   const content = (
                                     <>
-                                      {c.cover_image_url && <img src={c.cover_image_url} alt={c.cover_label ?? 'Cover'} className={styles.coverThumb} />}
+                                      <CoverThumb url={c.cover_image_url} label={c.cover_label ?? 'Cover'} imgClass={styles.coverThumb} placeholderClass={styles.coverThumbPlaceholder} />
                                       <span className={styles.coverLabel}>{c.cover_label ?? 'Cover'}</span>
                                     </>
                                   )
@@ -446,7 +450,7 @@ export default function Dashboard() {
                           {artistCovers.map(c => {
                             const content = (
                               <>
-                                {c.cover_image_url && <img src={c.cover_image_url} alt={c.cover_label ?? 'Cover'} className={styles.coverThumb} />}
+                                <CoverThumb url={c.cover_image_url} label={c.cover_label ?? 'Cover'} imgClass={styles.coverThumb} placeholderClass={styles.coverThumbPlaceholder} />
                                 <span className={styles.coverLabel}>{c.cover_label ?? 'Cover'}</span>
                               </>
                             )

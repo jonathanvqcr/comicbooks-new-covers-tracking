@@ -201,6 +201,15 @@
   border: 1px solid var(--border);
 }
 
+.coverThumbPlaceholder {
+  width: 36px;
+  height: 54px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
 .coverLabel {
   font-size: 0.82rem;
   color: var(--text-primary);
