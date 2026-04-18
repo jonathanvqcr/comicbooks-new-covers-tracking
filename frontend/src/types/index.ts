@@ -50,6 +50,7 @@ export interface CoverVariantItem {
 
 export interface FocExportRow {
   series_name: string;
+  series_url: string | null;
   issue_number: string | null;
   foc_date: string | null;
   release_date: string | null;

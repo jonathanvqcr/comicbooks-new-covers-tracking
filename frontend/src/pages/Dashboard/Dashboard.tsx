@@ -88,7 +88,12 @@ function FocTableRows({ rows }: { rows: FocExportRow[] }) {
     <>
       {rows.map((row, i) => (
         <tr key={i} className={row.has_tracked_artist ? styles.trackedRow : ''}>
-          <td>{row.has_tracked_artist ? '★ ' : ''}{row.series_name}</td>
+          <td>
+            {row.has_tracked_artist ? '★ ' : ''}
+            {row.series_url
+              ? <a href={row.series_url} target="_blank" rel="noreferrer" className={styles.issueLink}>{row.series_name}</a>
+              : row.series_name}
+          </td>
           <td>
             {row.locg_url
               ? <a href={row.locg_url} target="_blank" rel="noreferrer" className={styles.issueLink}>
@@ -111,7 +116,10 @@ function FocCards({ rows }: { rows: FocExportRow[] }) {
         <div key={i} className={`${styles.focCard} ${row.has_tracked_artist ? styles.focCardTracked : ''}`}>
           <div className={styles.focCardHeader}>
             <span className={`${styles.focCardSeries} ${row.has_tracked_artist ? styles.focCardSeriesTracked : ''}`}>
-              {row.has_tracked_artist ? '★ ' : ''}{row.series_name}
+              {row.has_tracked_artist ? '★ ' : ''}
+              {row.series_url
+                ? <a href={row.series_url} target="_blank" rel="noreferrer" className={styles.issueLink}>{row.series_name}</a>
+                : row.series_name}
             </span>
             <div className={styles.focCardMeta}>
               {row.locg_url

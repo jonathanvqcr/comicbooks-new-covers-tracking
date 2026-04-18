@@ -1,1 +1,1 @@
-{"id": 126, "job_name": "sync_reprints", "status": "success", "records_fetched": 0, "records_inserted": 0, "error_message": null, "error_detail": null, "started_at": "2026-04-13T02:05:41", "finished_at": "2026-04-13T02:16:41.499648"}
+{"id": 127, "job_name": "sync_series", "status": "success", "records_fetched": 158, "records_inserted": 142, "error_message": null, "error_detail": null, "started_at": "2026-04-18T00:28:52", "finished_at": "2026-04-18T00:44:54.354867"}

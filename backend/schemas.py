@@ -61,6 +61,7 @@ class CoverVariantItem(BaseModel):
 
 class FocExportRow(BaseModel):
     series_name: str
+    series_url: Optional[str] = None
     issue_number: Optional[str]
     foc_date: Optional[date]
     release_date: Optional[date] = None

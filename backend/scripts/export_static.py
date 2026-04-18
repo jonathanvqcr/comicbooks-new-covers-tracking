@@ -135,32 +135,7 @@ def export_upcoming_issues(db) -> None:
         .all()
     )
 
-    # Issues from artist-tracked series (not in watchlist) that have a tracked artist cover
-    artist_tracked = (
-        db.query(Issue)
-        .join(Issue.series)
-        .join(IssueCover, IssueCover.issue_id == Issue.id)
-        .join(CoverArtist, CoverArtist.issue_cover_id == IssueCover.id)
-        .join(Artist, Artist.id == CoverArtist.artist_id)
-        .filter(
-            Series.is_followed == False,
-            Artist.is_tracked == True,
-            or_(Issue.foc_date <= cutoff, Issue.release_date <= cutoff),
-            or_(Issue.foc_date >= today, Issue.release_date >= today),
-        )
-        .distinct()
-        .all()
-    )
-
-    # Merge, deduplicate, sort by FOC date
-    seen: set = set()
-    merged = []
-    for issue in followed + artist_tracked:
-        if issue.id not in seen:
-            seen.add(issue.id)
-            merged.append(issue)
-    merged.sort(key=lambda i: (i.foc_date or date.max))
-
+    merged = sorted(followed, key=lambda i: (i.foc_date or date.max))
     data = [_build_issue_read(i).model_dump(mode="json") for i in merged]
     _write("upcoming-issues.json", data)
     print(f"    {len(data)} upcoming issues")
@@ -209,6 +184,7 @@ def export_foc(db) -> None:
         ]
         rows.append(FocExportRow(
             series_name=issue.series.name if issue.series else "",
+            series_url=issue.series.locg_url if issue.series else None,
             issue_number=issue.issue_number,
             foc_date=issue.foc_date,
             locg_url=issue.locg_url,
