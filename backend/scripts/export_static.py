@@ -68,6 +68,7 @@ def _build_issue_read(issue: Issue) -> IssueRead:
         locg_issue_id=issue.locg_issue_id,
         series_id=issue.series_id,
         series_name=issue.series.name if issue.series else "",
+        series_url=issue.series.locg_url if issue.series else None,
         issue_number=issue.issue_number,
         title=issue.title,
         release_date=issue.release_date,

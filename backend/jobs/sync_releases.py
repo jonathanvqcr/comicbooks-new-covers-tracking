@@ -755,7 +755,16 @@ def _phase_artists(db: Session, artist_configs: list[dict], totals: dict, errors
                         series.name = series_name
                         db.commit()
                 if not series and series_name:
-                    series = db.query(Series).filter(Series.name == series_name).first()
+                    candidate = db.query(Series).filter(Series.name == series_name).first()
+                    # Only accept name-match if the series IDs don't conflict —
+                    # prevents artist-scraped issues from a different "Batman" series
+                    # being bucketed under the configured watchlist "Batman" series.
+                    if candidate and (
+                        not candidate.locg_series_id
+                        or not locg_series_id
+                        or candidate.locg_series_id == locg_series_id
+                    ):
+                        series = candidate
                 if not series:
                     series = Series(
                         name=series_name,

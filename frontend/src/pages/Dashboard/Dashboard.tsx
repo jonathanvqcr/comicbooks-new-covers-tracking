@@ -392,7 +392,11 @@ export default function Dashboard() {
                         const artistCovers = issue.covers.filter(c => c.artist_names.includes(artistName))
                         return (
                           <tr key={issue.id}>
-                            <td>{issue.series_name}</td>
+                            <td>
+                              {issue.series_url
+                                ? <a href={issue.series_url} target="_blank" rel="noreferrer" className={styles.issueLink}>{issue.series_name}</a>
+                                : issue.series_name}
+                            </td>
                             <td>{issue.issue_number ?? '—'}</td>
                             <td><FocBadge date={issue.foc_date} /></td>
                             <td>{formatDate(issue.release_date)}</td>
@@ -440,7 +444,11 @@ export default function Dashboard() {
                     return (
                       <div key={issue.id} className={styles.artistCard}>
                         <div className={styles.focCardHeader}>
-                          <span className={styles.focCardSeries}>{issue.series_name}</span>
+                          <span className={styles.focCardSeries}>
+                            {issue.series_url
+                              ? <a href={issue.series_url} target="_blank" rel="noreferrer" className={styles.issueLink}>{issue.series_name}</a>
+                              : issue.series_name}
+                          </span>
                           <div className={styles.focCardMeta}>
                             <span>#{issue.issue_number ?? '—'}</span>
                             <FocBadge date={issue.foc_date} />

@@ -31,6 +31,7 @@ export interface IssueRead {
   locg_issue_id: string | null;
   series_id: number;
   series_name: string;
+  series_url: string | null;
   issue_number: string | null;
   title: string | null;
   release_date: string | null;

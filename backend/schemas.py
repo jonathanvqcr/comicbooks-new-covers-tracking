@@ -40,6 +40,7 @@ class IssueRead(BaseModel):
     locg_issue_id: Optional[str] = None
     series_id: int
     series_name: str
+    series_url: Optional[str] = None
     issue_number: Optional[str] = None
     title: Optional[str] = None
     release_date: Optional[date] = None
